@@ -59,10 +59,15 @@ class BlockHeaderRoutes(
                     submission.height.toInt
                   )
                   
+                  // Get Waves parent block ID (same as template)
+                  val wavesParentId = blockchainUpdater.blockHeader((submission.height - 1).toInt)
+                    .map(_.id().arr.take(32))
+                    .getOrElse(Array.fill(32)(0.toByte))
+                  
                   // This should match the template we provided
                   val minedHeader = _root_.consensus.BlockHeader(
                     version = 1,
-                    parentId = parentBlock.bytes().take(32), // Parent block hash
+                    parentId = wavesParentId,  // Waves parent block ID
                     stateRoot = parentBlock.stateRoot,       // Inherit state root
                     timestamp = submission.timestamp.getOrElse(System.currentTimeMillis()),  // Use template timestamp if provided
                     difficultyBits = expectedDifficulty,    // Dynamic difficulty!
@@ -152,11 +157,16 @@ class BlockHeaderRoutes(
               newHeight.toInt
             )
             
+            // Get Waves parent block ID (NOT consensus bytes!)
+            val wavesParentId = blockchainUpdater.blockHeader(currentHeight.toInt)
+              .map(_.id().arr.take(32))
+              .getOrElse(Array.fill(32)(0.toByte))
+            
             // Build template header (without mutation vector)
             val template = _root_.consensus.BlockHeader(
               version = 1,
-              parentId = parent.bytes().take(32), // Use parent block hash as parentId
-              stateRoot = parent.stateRoot,       // Inherit state root
+              parentId = wavesParentId,  // Use Waves block ID for consistency
+              stateRoot = parent.stateRoot,       // Inherit state root  
               timestamp = currentTime,
               difficultyBits = difficulty,        // Dynamic difficulty!
               nonce = 0L,
