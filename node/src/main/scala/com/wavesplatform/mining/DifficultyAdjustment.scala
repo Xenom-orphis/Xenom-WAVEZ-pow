@@ -73,12 +73,11 @@ object DifficultyAdjustment {
     // Expected time for the window
     val expectedTimeMs = TARGET_BLOCK_TIME_MS * ADJUSTMENT_WINDOW
     
-    // Get previous block's difficulty (what we're adjusting from)
-    // Use recursion to get previous difficulty (cached, so efficient)
-    val currentDifficulty = if (currentHeight > ADJUSTMENT_WINDOW + 1) {
-      calculateDifficulty(blockchain, currentHeight - 1)
-    } else {
-      INITIAL_DIFFICULTY
+    // Get previous block's difficulty from cache (what we're adjusting from)
+    // Use cached value if available, otherwise start from initial
+    val currentDifficulty = Option(difficultyCache.get(currentHeight - 1)) match {
+      case Some(cached) if cached != 0 => cached
+      case _ => INITIAL_DIFFICULTY  // First calculation or cache miss - will converge quickly
     }
     
     // Calculate adjustment ratio (how fast/slow blocks are coming)
