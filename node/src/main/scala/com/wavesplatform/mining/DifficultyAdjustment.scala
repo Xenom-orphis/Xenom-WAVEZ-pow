@@ -8,6 +8,9 @@ import com.wavesplatform.state.Blockchain
  */
 object DifficultyAdjustment {
   
+  // Cache to avoid recalculating the same difficulty
+  private val difficultyCache = new java.util.concurrent.ConcurrentHashMap[Int, Long]()
+  
   // Target block time: 60 seconds
   val TARGET_BLOCK_TIME_MS: Long = 60000L
   
@@ -43,6 +46,12 @@ object DifficultyAdjustment {
       return INITIAL_DIFFICULTY
     }
     
+    // Check cache first
+    Option(difficultyCache.get(currentHeight)) match {
+      case Some(cached) if cached != 0 => return cached
+      case _ => // Calculate below
+    }
+    
     // Only adjust at interval boundaries (production: no emergency adjustments)
     if (currentHeight % ADJUSTMENT_INTERVAL != 0) {
       // Between adjustments, maintain the last adjusted difficulty
@@ -54,10 +63,9 @@ object DifficultyAdjustment {
         return INITIAL_DIFFICULTY
       }
       
-      // Get the difficulty from the last adjustment block
-      // Since we store it in the block, we can read it back
-      // For now, we'll recursively calculate it
-      return calculateDifficulty(blockchain, lastAdjustmentHeight)
+      // Get the difficulty from the last adjustment block (use cache)
+      val lastDifficulty = calculateDifficulty(blockchain, lastAdjustmentHeight)
+      return lastDifficulty
     }
     
     // Get the last ADJUSTMENT_INTERVAL blocks
@@ -68,8 +76,13 @@ object DifficultyAdjustment {
       blockchain.blockHeader(h)
     }
     
+    println(s"\n🔧 Calculating difficulty adjustment at height $currentHeight")
+    println(s"   Analyzing blocks $startHeight to $endHeight")
+    println(s"   Found ${blocks.length} blocks (need $ADJUSTMENT_INTERVAL)")
+    
     if (blocks.length < ADJUSTMENT_INTERVAL) {
       // Not enough blocks, use initial difficulty
+      println(s"   ⚠️  Not enough blocks! Using initial difficulty")
       return INITIAL_DIFFICULTY
     }
     
@@ -113,6 +126,9 @@ object DifficultyAdjustment {
     println(s"   Adjustment: ${if (adjustmentFactor > 1) "+" else ""}${((adjustmentFactor - 1) * 100).toInt}%")
     println(s"   Old difficulty: ${difficultyDescription(currentDifficulty)}")
     println(s"   New difficulty: ${difficultyDescription(clampedDifficulty)}")
+    
+    // Cache the result
+    difficultyCache.put(currentHeight, clampedDifficulty)
     
     clampedDifficulty
   }
