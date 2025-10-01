@@ -147,12 +147,17 @@ package object appender {
     for {
       _ <- Miner.isAllowedForMining(block.sender.toAddress, blockchainUpdater).leftMap(BlockAppendError(_, block))
       hitSource <- blockConsensusValidation(blockchainUpdater, pos, time.correctedTime(), block) { (height, parent) =>
-        val balance = blockchainUpdater.generatingBalance(block.sender.toAddress, Some(parent))
-        Either.cond(
-          blockchainUpdater.isEffectiveBalanceValid(height, block, balance),
-          balance + block.header.challengedHeader.map(ch => blockchainUpdater.generatingBalance(ch.generator.toAddress, Some(parent))).getOrElse(0L),
-          s"generator's effective balance $balance is less that required for generation"
-        )
+        // Skip balance check for PoW blocks (rewardVote = -1 marker)
+        if (block.header.rewardVote == -1) {
+          Right(0L)  // PoW blocks don't need balance
+        } else {
+          val balance = blockchainUpdater.generatingBalance(block.sender.toAddress, Some(parent))
+          Either.cond(
+            blockchainUpdater.isEffectiveBalanceValid(height, block, balance),
+            balance + block.header.challengedHeader.map(ch => blockchainUpdater.generatingBalance(ch.generator.toAddress, Some(parent))).getOrElse(0L),
+            s"generator's effective balance $balance is less that required for generation"
+          )
+        }
       }
       _ <- validateStateHash(block, blockchainUpdater)
       _ <- validateChallengedHeader(block, blockchainUpdater)

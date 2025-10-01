@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NODE_URL="http://84.247.131.3:36669"
+NODE_URL="http://127.0.0.1:36670"
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 
 # Check if miner binary exists
