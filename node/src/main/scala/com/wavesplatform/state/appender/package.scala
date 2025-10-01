@@ -185,18 +185,11 @@ package object appender {
           _                <- if (isPowBlock) Right(()) else pos.validateBaseTarget(height, block, parent, grandParent)
           hitSource        <- if (isPowBlock) Right(block.header.generationSignature) else pos.validateGenerationSignature(block)
           
-          // PoW-specific: Enforce 60-second minimum block time
+          // PoW blocks: No block delay validation - difficulty adjustment controls timing
+          // If blocks come too fast, difficulty increases (next 2016 blocks harder)
+          // If blocks come too slow, difficulty decreases (next 2016 blocks easier)
           _ <- if (isPowBlock) {
-                 val minBlockTimeMs = 60000L  // 60 seconds
-                 val parentTime = parent.timestamp
-                 val blockTime = block.header.timestamp
-                 val timeDiff = blockTime - parentTime
-                 
-                 Either.cond(
-                   timeDiff >= minBlockTimeMs,
-                   (),
-                   GenericError(s"PoW block time $blockTime is only ${timeDiff}ms after parent $parentTime (minimum ${minBlockTimeMs}ms required)")
-                 )
+                 Right(())  // Allow any timing - let difficulty adjust naturally
                } else {
                  pos
                    .validateBlockDelay(height, block.header, parent, effectiveBalance)
