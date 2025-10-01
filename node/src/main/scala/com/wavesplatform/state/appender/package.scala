@@ -185,27 +185,59 @@ package object appender {
           _                <- if (isPowBlock) Right(()) else pos.validateBaseTarget(height, block, parent, grandParent)
           hitSource        <- if (isPowBlock) Right(block.header.generationSignature) else pos.validateGenerationSignature(block)
           
-          // PoW blocks: Validate difficulty is correct (CONSENSUS CRITICAL!)
-          // All nodes MUST calculate the same difficulty for a given height
+          // PoW blocks: Validate difficulty and PoW solution (CONSENSUS CRITICAL!)
           _ <- if (isPowBlock) {
-                 // Calculate expected difficulty from blockchain state
-                 // This is deterministic - all nodes get the same value
+                 // 1. Calculate expected difficulty from blockchain state
                  val expectedDifficulty = com.wavesplatform.mining.DifficultyAdjustment.calculateDifficulty(
                    blockchain,
-                   height + 1  // Next block height
+                   height + 1
                  )
                  
-                 // TODO: Validate PoW solution meets difficulty requirement
-                 // Need to reconstruct consensus.BlockHeader from Waves block
-                 // and call validatePow() to verify the solution
-                 // For now, trust that miners/API validated it
+                 // 2. Extract difficulty from block (stored in baseTarget for PoW)
+                 val blockDifficulty = block.header.baseTarget
                  
-                 // Log difficulty consensus check
-                 println(s"\n✓ Difficulty consensus: height ${height + 1}, difficulty 0x${expectedDifficulty}%08x")
-                 println(f"   ${com.wavesplatform.mining.DifficultyAdjustment.difficultyDescription(expectedDifficulty)}")
-                 println(s"   WARNING: PoW solution not validated in consensus - trusting submitter!")
-                 
-                 Right(())
+                 // 3. Validate difficulty matches consensus
+                 if (blockDifficulty != expectedDifficulty) {
+                   Left(GenericError(
+                     f"PoW difficulty mismatch at height ${height + 1}: " +
+                     f"expected 0x${expectedDifficulty}%08x, got 0x${blockDifficulty}%08x"
+                   ))
+                 } else {
+                   // 4. Extract mutation vector (first 16 bytes of generationSignature)
+                   val mutationVector = block.header.generationSignature.arr.take(16)
+                   
+                   // 5. Reconstruct PoW header for validation
+                   val powHeader = _root_.consensus.BlockHeader(
+                     version = block.header.version.toInt,
+                     parentId = block.header.reference.arr.take(32),
+                     stateRoot = Array.fill(32)(0.toByte), // Not used in PoW validation
+                     timestamp = block.header.timestamp,
+                     difficultyBits = blockDifficulty,
+                     nonce = 0L, // Not used in genetic PoW
+                     mutationVector = mutationVector
+                   )
+                   
+                   // 6. Validate PoW solution
+                   val isValid = pow.Pow.verifyPowFromBytes(
+                     powHeader.bytes(),
+                     blockDifficulty
+                   ).getOrElse(false)
+                   
+                   if (!isValid) {
+                     Left(GenericError(
+                       f"PoW solution invalid at height ${height + 1}: " +
+                       f"mutation vector ${mutationVector.map("%02x".format(_)).mkString} " +
+                       f"does not meet difficulty 0x${blockDifficulty}%08x"
+                     ))
+                   } else {
+                     // Success! Log validation
+                     println(s"\n✓ PoW VALIDATED at height ${height + 1}:")
+                     println(f"   Difficulty: 0x${expectedDifficulty}%08x (${com.wavesplatform.mining.DifficultyAdjustment.difficultyDescription(expectedDifficulty)})")
+                     println(f"   MV: ${mutationVector.map("%02x".format(_)).mkString}")
+                     println(s"   Solution meets difficulty requirement ✓")
+                     Right(())
+                   }
+                 }
                } else {
                  pos
                    .validateBlockDelay(height, block.header, parent, effectiveBalance)

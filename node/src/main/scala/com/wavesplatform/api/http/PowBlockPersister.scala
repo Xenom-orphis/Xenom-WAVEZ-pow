@@ -48,27 +48,19 @@ class PowBlockPersister(
         case None => ByteStr(Array.fill(32)(0.toByte)) // Genesis parent
       }
       
-      // Get baseTarget from parent (Waves PoS consensus requirement)
-      // We cannot arbitrarily set baseTarget - it must follow Waves' PoS rules
-      val baseTarget = parentBlockOpt match {
-        case Some(parent) => parent.header.baseTarget  // Inherit from parent
-        case None => 153722867L  // Genesis baseTarget from Waves
-      }
+      // For PoW blocks: Store difficulty in baseTarget field
+      // This allows consensus validation to check difficulty
+      val baseTarget = powHeader.difficultyBits
 
       // Get generator account from wallet
       val generator = wallet.privateKeyAccounts.headOption.getOrElse {
         return Left(com.wavesplatform.transaction.TxValidationError.GenericError("No accounts in wallet for block signing"))
       }
 
-      // Generate VRF proof for version 5 blocks
-      // We need to use the blockchain's hitSource calculation (not just parent's generationSignature)
-      val hitSource = blockchainUpdater.hitSource((height - 1).toInt) match {
-        case Some(hitSrc) => hitSrc
-        case None => ByteStr(Array.fill(32)(0.toByte))  // Genesis hit source
-      }
-      
-      // Sign VRF using wallet private key
-      val vrfProof = crypto.signVRF(generator.privateKey, hitSource.arr)
+      // For PoW blocks: Store mutation vector in generationSignature field (16 bytes)
+      // Pad to 32 bytes for Waves compatibility
+      val mutationVectorPadded = powHeader.mutationVector ++ Array.fill(16)(0.toByte)
+      val generationSigForPoW = ByteStr(mutationVectorPadded)
       
       // For PoW mining: disregard PoS timing rules, use current time
       // This allows fast block generation based on PoW solution speed
@@ -81,15 +73,16 @@ class PowBlockPersister(
       val transactions = Seq.empty
       val txRoot = com.wavesplatform.block.mkTransactionsRoot(5.toByte, transactions)
 
-      // Create Waves BlockHeader
-      // Note: We need to map PoW fields to Waves PoS fields
-      // IMPORTANT: Waves blockchain requires version 5 blocks with VRF
+      // Create Waves BlockHeader with PoW data embedded
+      // CRITICAL: Store PoW validation data in block for consensus
+      // - baseTarget: difficulty bits (normally PoS target, repurposed for PoW)
+      // - generationSignature: mutation vector (16 bytes + 16 padding)
       val wavesHeader = com.wavesplatform.block.BlockHeader(
         version = 5.toByte,  // Version 5 required by blockchain
         timestamp = blockTimestamp,  // Current time - ignore PoS delay rules
         reference = parentReference,
-        baseTarget = baseTarget,  // Use parent's baseTarget (PoS consensus rule)
-        generationSignature = vrfProof,  // Valid VRF proof
+        baseTarget = baseTarget,  // PoW: difficulty bits (was PoS base target)
+        generationSignature = generationSigForPoW,  // PoW: mutation vector (was VRF proof)
         generator = generator.publicKey,
         featureVotes = Seq.empty,
         rewardVote = -1L,  // PoW marker: bypasses PoS validation
