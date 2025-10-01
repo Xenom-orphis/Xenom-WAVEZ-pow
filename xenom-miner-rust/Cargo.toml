@@ -1,0 +1,20 @@
+[package]
+name = "xenom-miner-rust"
+version = "0.1.0"
+edition = "2021"
+
+authors = ["Waves_Pow"]
+description = "Xenom optimized PoW miner in Rust (BLAKE3 + GA with optional GPU hooks)"
+license = "MIT"
+
+[dependencies]
+blake3 = "1.3"
+rand = "0.8"
+rayon = "1.7"
+clap = { version = "4.1", features = ["derive"] }
+hex = "0.4"
+num-bigint = "0.4"
+num_cpus = "1.16"
+
+# Optional (OpenCL)
+# ocl = "0.30"   # descomente se for usar OpenCL; exige SDK OpenCL e ajuste do kernel

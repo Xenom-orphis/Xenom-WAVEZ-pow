@@ -1,0 +1,98 @@
+name: Check PR
+on:
+  pull_request:
+
+jobs:
+  check-pr:
+    name: Check PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+          cache: 'sbt'
+          gpg-private-key: ${{ secrets.OSSRH_GPG_KEY }}
+          gpg-passphrase: ${{ secrets.OSSRH_GPG_PASSPHRASE }}
+      - uses: sbt/setup-sbt@v1
+      - name: Check PR
+        run: sbt -J-Xlog:gc*=debug:file=./gc.log --batch ";scalafmtCheck;checkPR;completeQaseRun"
+        env:
+          QASE_ENABLE: true
+          QASE_RUN_NAME: checkPR
+          QASE_RUN_ID: 1
+          QASE_PROJECT_CODE: PR
+          QASE_API_TOKEN: ${{ secrets.QASE_API_TOKEN }}
+          CHECKPR_RUN_ID: ${{ github.run_id }}
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            lang:
+              - 'lang/**'
+              - 'build.sbt'
+              - 'project/*'
+      - name: Compile external sources
+        if: steps.filter.outputs.lang == 'true'
+        run: |
+          sbt lang/assembly
+          git clone --depth 1 https://github.com/waves-exchange/neutrino-contract
+          git clone --depth 1 https://github.com/waves-exchange/contracts
+          git clone --depth 1 https://github.com/waves-ducks-core/wavesducks-public
+          git clone --depth 1 https://github.com/swopfi/swopfi-smart-contracts
+          find neutrino-contract/script     -name "*.ride" -type f -exec java -jar lang/jvm/target/file-compiler.jar {} +;     
+          find contracts/ride               -name "*.ride" -type f -exec java -jar lang/jvm/target/file-compiler.jar {} +;     
+          find wavesducks-public/ride       -name "*.ride" -type f -exec java -jar lang/jvm/target/file-compiler.jar {} +;     
+          find swopfi-smart-contracts/dApps -name "*.ride" -type f -exec java -jar lang/jvm/target/file-compiler.jar {} +;
+      - name: Publish snapshots
+        if: ${{ contains(github.event.pull_request.labels.*.name, 'publish-snapshots') }}
+        env:
+          SONATYPE_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+          SONATYPE_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+          PGP_PASSPHRASE: ${{ secrets.OSSRH_GPG_PASSPHRASE }}
+        run: |
+          find ~/.cache/coursier -type d -name '*SNAPSHOT' | xargs rm -vrf {} \;
+          version=$(echo ${{ github.base_ref }} | awk -F '[-.]' '{print $2"."$3}')
+          pr_number=${{ github.event.number }}
+          sbt -Dproject.version=$version-$pr_number-SNAPSHOT --batch publish
+      - name: Save debug data
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          if-no-files-found: ignore
+          name: debug-data
+          path: |
+            gc.log
+            hs*.log
+            core*
+
+  run-integration-tests:
+    name: Run integration tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+          cache: 'sbt'
+      - uses: sbt/setup-sbt@v1
+      - name: Run Integration Tests
+        run: sbt --batch ";node-it/docker;node-it/test"
+        env:
+          RUN_ID: ${{ github.ref_name }}-${{ github.run_number }}-${{ github.run_attempt }}
+      - uses: dorny/test-reporter@v2
+        if: always()
+        with:
+          reporter: java-junit
+          name: JUnit Report
+          path: 'node-it/target/test-reports/*.xml'
+      - name: Upload Logs
+        uses: actions/upload-artifact@v4
+        if: cancelled() || failure()
+        with:
+          if-no-files-found: ignore
+          name: test-logs
+          path: |
+            node-it/target/logs/*/

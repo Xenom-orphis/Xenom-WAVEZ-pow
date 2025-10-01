@@ -1,0 +1,95 @@
+diff --git a/build.sbt b/build.sbt
+index 1111111..2222222 100644
+--- a/build.sbt
++++ b/build.sbt
+@@
+ libraryDependencies ++= Seq(
+-  // suas dependências atuais
++  // Dependência BLAKE3 para JVM/Scala (ajuste groupId/artifact/versão conforme artefato real disponível)
++  "com.github.kcrypt" %% "scala-blake3" % "3.1.2",
++
++  // Biblioteca de algoritmos genéticos (usada apenas no miner, não no validador)
++  "io.jenetics" % "jenetics" % "7.2.0"
+ )
+ 
+diff --git a/src/main/scala/pow/Pow.scala b/src/main/scala/pow/Pow.scala
+new file mode 100644
+index 0000000..3333333
+--- /dev/null
++++ b/src/main/scala/pow/Pow.scala
+@@
++package pow
++
++import java.nio.ByteBuffer
++import scala.util.Try
++
++// Ajuste o import de acordo com a lib BLAKE3 escolhida
++import kcrypt.blake3.Blake3
++
++// Representação mínima do BlockHeader — substitua pelo BlockHeader real do projeto
++case class BlockHeader(
++  version: Int,
++  prevHash: Array[Byte],
++  merkleRoot: Array[Byte],
++  timestamp: Long,
++  bits: Long // dificuldade compacta/target (a adaptar ao seu formato)
++)
++
++object Pow {
++  def serializeHeaderForPow(header: BlockHeader, mutationVector: Array[Byte]): Array[Byte] = {
++    val bb = ByteBuffer.allocate(4 + header.prevHash.length + header.merkleRoot.length + 8 + mutationVector.length)
++    bb.putInt(header.version)
++    bb.put(header.prevHash)
++    bb.put(header.merkleRoot)
++    bb.putLong(header.timestamp)
++    bb.put(mutationVector)
++    bb.array()
++  }
++
++  def hashToBigInt(hash: Array[Byte]): BigInt = BigInt(1, hash)
++
++  def targetFromBits(bits: Long): BigInt = {
++    // Placeholder: adapte ao esquema de dificuldade do Waves
++    BigInt("0x0000ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", 0)
++  }
++
++  def verifyPow(header: BlockHeader, mutationVector: Array[Byte], bits: Long): Try[Boolean] = Try {
++    val data = serializeHeaderForPow(header, mutationVector)
++
++    val hasher = Blake3.newHasher()    // API ilustrativa
++    hasher.update(data)
++    val digest = hasher.finalizeHash() // retorna Array[Byte]
++
++    val hInt = hashToBigInt(digest)
++    val target = targetFromBits(bits)
++    hInt <= target
++  }
++}
++
++object PowTest extends App {
++  val header = BlockHeader(1, Array.fill(32)(0.toByte), Array.fill(32)(1.toByte), System.currentTimeMillis() / 1000L, 0L)
++  val mutation = Array.fill(16)(0.toByte)
++
++  Pow.verifyPow(header, mutation, 0L).fold(
++    err => println(s"Erro ao verificar PoW: ${err.getMessage}"),
++    ok  => println(s"PoW válido? $ok")
++  )
++}
+diff --git a/src/test/scala/pow/PowSpec.scala b/src/test/scala/pow/PowSpec.scala
+new file mode 100644
+index 0000000..4444444
+--- /dev/null
++++ b/src/test/scala/pow/PowSpec.scala
+@@
++package pow
++
++import org.scalatest.funsuite.AnyFunSuite
++
++class PowSpec extends AnyFunSuite {
++  test("verifyPow should run without errors") {
++    val header = BlockHeader(1, Array.fill(32)(0.toByte), Array.fill(32)(1.toByte), System.currentTimeMillis() / 1000L, 0L)
++    val mutation = Array.fill(16)(0.toByte)
++    val result = Pow.verifyPow(header, mutation, 0L)
++    assert(result.isSuccess)
++  }
++}
