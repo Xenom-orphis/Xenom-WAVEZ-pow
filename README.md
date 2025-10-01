@@ -56,12 +56,14 @@ Linux systems:
 ```bash
 sudo apt-get update
 sudo apt-get install openjdk-11-jre
+sbt compile buildPlatformIndependentArtifacts
 java -jar node/target/waves-all*.jar path/to/config/waves-{network}.conf
 ```
 
 Mac systems (assuming already installed homebrew):
 ```bash
 brew cask install adoptopenjdk/openjdk/adoptopenjdk11
+sbt compile buildPlatformIndependentArtifacts
 java -jar node/target/waves-all*.jar path/to/config/waves-{network}.conf
 ```
 
