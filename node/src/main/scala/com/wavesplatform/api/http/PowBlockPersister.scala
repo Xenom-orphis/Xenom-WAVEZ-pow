@@ -119,7 +119,14 @@ class PowBlockPersister(
       log.info(s"   Generator Address: ${generator.toAddress}")
       log.info(s"   MV: ${powHeader.mutationVector.map("%02x".format(_)).mkString}")
       log.info(s"   Signature: ${signature.toString.take(16)}...")
-      log.info(s"   💰 Mining Reward: 6 WAVES (credited by BlockchainUpdater)")
+      
+      // Calculate halving reward for logging
+      val initialReward = 3L * com.wavesplatform.settings.Constants.UnitsInWave
+      val halvingInterval = 210000
+      val halvings = (height - 1) / halvingInterval
+      val powReward = if (halvings >= 64) 0L else initialReward >> halvings
+      val rewardWaves = powReward.toDouble / com.wavesplatform.settings.Constants.UnitsInWave
+      log.info(f"   💰 Mining Reward: $rewardWaves%.8f WAVES (halving era $halvings, credited by BlockchainUpdater)")
 
       // Append to blockchain
       val appendTask = blockAppender(block)

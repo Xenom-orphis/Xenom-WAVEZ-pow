@@ -184,10 +184,24 @@ package object appender {
           isPowBlock = block.header.rewardVote == -1L
           _                <- if (isPowBlock) Right(()) else pos.validateBaseTarget(height, block, parent, grandParent)
           hitSource        <- if (isPowBlock) Right(block.header.generationSignature) else pos.validateGenerationSignature(block)
-          _ <- if (isPowBlock) Right(())
-               else pos
-                 .validateBlockDelay(height, block.header, parent, effectiveBalance)
-                 .orElse(checkExceptions(height, block))
+          
+          // PoW-specific: Enforce 60-second minimum block time
+          _ <- if (isPowBlock) {
+                 val minBlockTimeMs = 60000L  // 60 seconds
+                 val parentTime = parent.timestamp
+                 val blockTime = block.header.timestamp
+                 val timeDiff = blockTime - parentTime
+                 
+                 Either.cond(
+                   timeDiff >= minBlockTimeMs,
+                   (),
+                   GenericError(s"PoW block time $blockTime is only ${timeDiff}ms after parent $parentTime (minimum ${minBlockTimeMs}ms required)")
+                 )
+               } else {
+                 pos
+                   .validateBlockDelay(height, block.header, parent, effectiveBalance)
+                   .orElse(checkExceptions(height, block))
+               }
         } yield hitSource
       }
       .left

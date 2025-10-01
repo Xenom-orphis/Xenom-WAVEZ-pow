@@ -145,11 +145,28 @@ object BlockDiffer {
         Right(Portfolio.empty)
 
     val addressRewardsE: Either[String, (Portfolio, Map[Address, Portfolio], Map[Address, Portfolio])] = 
-      // PoW blocks (rewardVote == -1): Fixed 6 WAVES coinbase reward
+      // PoW blocks (rewardVote == -1): Halving coinbase reward (Bitcoin-style)
       if (block.header.rewardVote == -1L) {
-        val powReward = 6L * com.wavesplatform.settings.Constants.UnitsInWave
+        // Initial reward: 3 WAVES
+        // Halving: Every 210,000 blocks (Bitcoin halving interval)
+        // Block 1-210,000: 3 WAVES
+        // Block 210,001-420,000: 1.5 WAVES
+        // Block 420,001-630,000: 0.75 WAVES
+        // etc.
+        val initialReward = 3L * com.wavesplatform.settings.Constants.UnitsInWave
+        val halvingInterval = 210000
+        val halvings = (heightWithNewBlock - 1) / halvingInterval  // Genesis is block 1
+        
+        // Calculate halved reward: reward / (2^halvings)
+        // After 64 halvings, reward becomes 0 (max supply reached)
+        val powReward = if (halvings >= 64) {
+          0L
+        } else {
+          initialReward >> halvings  // Bit shift right = divide by 2^halvings
+        }
+        
         Right(
-          Portfolio.waves(powReward),  // Miner gets 6 WAVES
+          Portfolio.waves(powReward),
           Map.empty[Address, Portfolio],  // No DAO reward
           Map.empty[Address, Portfolio]   // No XTN buyback
         )
