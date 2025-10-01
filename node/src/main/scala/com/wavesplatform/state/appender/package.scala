@@ -206,14 +206,20 @@ package object appender {
                    // 4. Extract mutation vector (first 16 bytes of generationSignature)
                    val mutationVector = block.header.generationSignature.arr.take(16)
                    
-                   // 5. Reconstruct PoW header for validation
+                   // 5. Reconstruct PoW header EXACTLY as it was created in template
+                   // Get parent block ID (32-byte hash)
+                   val parentBlockId = blockchain.blockHeader(height).map(_.id().arr.take(32)).getOrElse(Array.fill(32)(0.toByte))
+                   
+                   // Get parent's stateHash
+                   val parentStateRoot = parent.stateHash.map(_.arr.take(32)).getOrElse(Array.fill(32)(0.toByte))
+                   
                    val powHeader = _root_.consensus.BlockHeader(
-                     version = block.header.version.toInt,
-                     parentId = block.header.reference.arr.take(32),
-                     stateRoot = Array.fill(32)(0.toByte), // Not used in PoW validation
+                     version = 1,
+                     parentId = parentBlockId,
+                     stateRoot = parentStateRoot,
                      timestamp = block.header.timestamp,
                      difficultyBits = blockDifficulty,
-                     nonce = 0L, // Not used in genetic PoW
+                     nonce = 0L,
                      mutationVector = mutationVector
                    )
                    

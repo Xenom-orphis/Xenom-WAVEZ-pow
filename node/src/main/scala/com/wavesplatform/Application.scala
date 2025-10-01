@@ -128,34 +128,60 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
         blockchainUpdater.blockHeader(height.toInt).map { signedHeader =>
           val wavesHeader = signedHeader.header
           
-          // Map Waves fields to PoW consensus fields:
-          // - version: use Waves version (byte -> int)
-          // - parentId: use reference (previous block ID)
-          // - stateRoot: use stateHash if available, otherwise transactionsRoot
-          // - timestamp: use Waves timestamp
-          // - difficultyBits: derive from baseTarget (PoW difficulty encoding)
-          // - nonce: use timestamp as pseudo-nonce (Waves doesn't have nonce)
-          // - mutationVector: empty for Waves blocks (only PoW blocks have this)
+          // Check if this is a PoW block (rewardVote == -1)
+          val isPowBlock = wavesHeader.rewardVote == -1L
           
-          val parentId = wavesHeader.reference.arr
-          val stateRoot = wavesHeader.stateHash
-            .map(_.arr)
-            .getOrElse(wavesHeader.transactionsRoot.arr)
-          
-          // Convert baseTarget to difficulty bits (simplified mapping)
-          // Lower baseTarget = higher difficulty
-          // For compatibility, we use a fixed difficulty bits value
-          val difficultyBits = 0x1f00ffffL
-          
-          _root_.consensus.BlockHeader(
-            version = wavesHeader.version.toInt,
-            parentId = parentId,
-            stateRoot = stateRoot,
-            timestamp = wavesHeader.timestamp,
-            difficultyBits = difficultyBits,
-            nonce = wavesHeader.timestamp, // Waves doesn't have nonce, use timestamp
-            mutationVector = Array.empty[Byte] // Waves blocks don't have mutation vector
-          )
+          if (isPowBlock) {
+            // PoW blocks: Extract stored PoW data
+            // baseTarget contains difficulty bits
+            // generationSignature contains mutation vector (first 16 bytes)
+            val difficultyBits = wavesHeader.baseTarget
+            val mutationVector = wavesHeader.generationSignature.arr.take(16)
+            
+            // Need to reconstruct parent block to get its serialized bytes
+            val parentBytes = if (height > 1) {
+              blockchainUpdater.blockHeader((height - 1).toInt)
+                .map(_.id().arr)
+                .getOrElse(Array.fill(32)(0.toByte))
+            } else {
+              Array.fill(32)(0.toByte) // Genesis parent
+            }
+            
+            val stateRoot = if (height > 1) {
+              blockchainUpdater.blockHeader((height - 1).toInt)
+                .flatMap(_.header.stateHash.map(_.arr.take(32)))
+                .getOrElse(Array.fill(32)(0.toByte))
+            } else {
+              Array.fill(32)(0.toByte)
+            }
+            
+            _root_.consensus.BlockHeader(
+              version = 1,
+              parentId = parentBytes,
+              stateRoot = stateRoot,
+              timestamp = wavesHeader.timestamp,
+              difficultyBits = difficultyBits,
+              nonce = 0L,
+              mutationVector = mutationVector
+            )
+          } else {
+            // Regular Waves blocks: convert to consensus format
+            val parentId = wavesHeader.reference.arr
+            val stateRoot = wavesHeader.stateHash
+              .map(_.arr)
+              .getOrElse(wavesHeader.transactionsRoot.arr)
+            val difficultyBits = 0x1f00ffffL
+            
+            _root_.consensus.BlockHeader(
+              version = wavesHeader.version.toInt,
+              parentId = parentId,
+              stateRoot = stateRoot,
+              timestamp = wavesHeader.timestamp,
+              difficultyBits = difficultyBits,
+              nonce = wavesHeader.timestamp,
+              mutationVector = Array.empty[Byte]
+            )
+          }
         }
       } else {
         None
