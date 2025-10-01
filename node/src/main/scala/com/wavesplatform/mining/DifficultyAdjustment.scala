@@ -14,9 +14,9 @@ object DifficultyAdjustment {
   // Target block time: 60 seconds
   val TARGET_BLOCK_TIME_MS: Long = 60000L
   
-  // Real-time adjustment: Look at recent N blocks for difficulty calculation
-  // Shorter window = faster response to hashrate changes
-  val ADJUSTMENT_WINDOW: Int = 60  // Last 60 blocks (~60 minutes of history)
+  // Ultra-fast adjustment: Look at recent N blocks for difficulty calculation
+  // Very short window = instant response to hashrate changes (5-10 seconds of history)
+  val ADJUSTMENT_WINDOW: Int = 5  // Last 5 blocks (~5 seconds at current speed)
   
   // Initial difficulty (production starting point)
   val INITIAL_DIFFICULTY: Long = 0x1f00ffffL
@@ -28,10 +28,10 @@ object DifficultyAdjustment {
   val MIN_DIFFICULTY: Long = DIFFICULTY_FLOOR
   val MAX_DIFFICULTY: Long = 0xffffffffL
   
-  // Per-block adjustment limits (smoother than Bitcoin's ±25%)
-  // Real-time adjustment allows smaller, more frequent changes
-  val MAX_ADJUSTMENT_FACTOR: Double = 1.10  // Max +10% per block
-  val MIN_ADJUSTMENT_FACTOR: Double = 0.90  // Max -10% per block
+  // Per-block adjustment limits with ultra-fast window
+  // Small window (5 blocks) = need aggressive adjustments
+  val MAX_ADJUSTMENT_FACTOR: Double = 1.50  // Max +50% per block
+  val MIN_ADJUSTMENT_FACTOR: Double = 0.50  // Max -50% per block
   
   /**
    * Calculate the next difficulty based on recent block times
@@ -81,38 +81,39 @@ object DifficultyAdjustment {
     }
     
     // Calculate adjustment ratio (how fast/slow blocks are coming)
-    val ratio = expectedTimeMs.toDouble / actualTimeMs.toDouble  // Inverted: >1 means fast, <1 means slow
+    val ratio = expectedTimeMs.toDouble / actualTimeMs.toDouble  // >1 means fast, <1 means slow
     
     // Apply adjustment factor with per-block limits
-    // ratio > 1 = blocks too fast → increase difficulty (multiply)
-    // ratio < 1 = blocks too slow → decrease difficulty (divide)
+    // In PoW: LOWER difficulty bits = HARDER to mine (smaller target)
+    //         HIGHER difficulty bits = EASIER to mine (larger target)
+    // ratio > 1 = blocks too fast → DIVIDE difficulty (make harder)
+    // ratio < 1 = blocks too slow → MULTIPLY difficulty (make easier)
     val adjustmentFactor = if (ratio > MAX_ADJUSTMENT_FACTOR) {
-      MAX_ADJUSTMENT_FACTOR  // Cap maximum increase
+      MAX_ADJUSTMENT_FACTOR  // Cap maximum change
     } else if (ratio < MIN_ADJUSTMENT_FACTOR) {
-      MIN_ADJUSTMENT_FACTOR  // Cap maximum decrease
+      MIN_ADJUSTMENT_FACTOR  // Cap maximum change
     } else {
       ratio  // Use actual ratio if within bounds
     }
     
-    // Apply adjustment: difficulty decreases when blocks are too fast
-    // (smaller number = harder to find)
-    val newDifficulty = (currentDifficulty * adjustmentFactor).toLong
+    // Apply adjustment: DIVIDE when too fast (harder), MULTIPLY when too slow (easier)
+    // Inverted from typical intuition because lower bits = harder in PoW
+    val newDifficulty = (currentDifficulty / adjustmentFactor).toLong
     
     // Clamp to bounds (enforce difficulty floor)
     val clampedDifficulty = Math.max(MIN_DIFFICULTY, Math.min(MAX_DIFFICULTY, newDifficulty))
     
-    // Real-time adjustment logging (every block)
+    // Ultra-fast adjustment logging (every block with small window)
     val actualBlockTime = actualTimeMs / ADJUSTMENT_WINDOW
-    val changePercent = ((adjustmentFactor - 1) * 100)
+    val changePercent = ((1.0 / adjustmentFactor - 1) * 100)  // Inverted because we divide
     
-    // Only log significant changes or periodically
-    if (Math.abs(changePercent) > 1.0 || currentHeight % 10 == 0) {
-      println(s"⚡ Real-time difficulty adjustment at height $currentHeight:")
-      println(f"   Last $ADJUSTMENT_WINDOW blocks: ${actualBlockTime}%.1fms/block (target: ${TARGET_BLOCK_TIME_MS}ms)")
-      println(f"   Adjustment: ${if (adjustmentFactor > 1) "+" else ""}$changePercent%.2f%%")
-      println(s"   Old: ${difficultyDescription(currentDifficulty)}")
-      println(s"   New: ${difficultyDescription(clampedDifficulty)}")
-    }
+    // Log every adjustment since window is tiny (5 blocks)
+    println(s"⚡ Ultra-fast difficulty adjustment at height $currentHeight:")
+    println(f"   Last $ADJUSTMENT_WINDOW blocks: ${actualBlockTime}%.0fms/block (target: ${TARGET_BLOCK_TIME_MS}ms)")
+    println(f"   Speed ratio: ${ratio}%.2fx (${if (ratio > 1) "TOO FAST" else "too slow"})")
+    println(f"   Difficulty change: ${if (changePercent > 0) "+" else ""}$changePercent%.1f%% (${if (ratio > 1) "HARDER" else "easier"})")
+    println(s"   Old: ${difficultyDescription(currentDifficulty)}")
+    println(s"   New: ${difficultyDescription(clampedDifficulty)}")
     
     // Cache the result
     difficultyCache.put(currentHeight, clampedDifficulty)
