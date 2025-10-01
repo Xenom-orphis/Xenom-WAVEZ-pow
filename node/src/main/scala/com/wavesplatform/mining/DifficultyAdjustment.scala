@@ -14,24 +14,24 @@ object DifficultyAdjustment {
   // Target block time: 60 seconds
   val TARGET_BLOCK_TIME_MS: Long = 60000L
   
-  // Adjust difficulty every N blocks (Bitcoin uses 2016, ~2 weeks at 10min blocks)
-  // For 60s blocks, 2016 blocks = ~33.6 hours between adjustments
-  val ADJUSTMENT_INTERVAL: Int = 2016
+  // Real-time adjustment: Look at recent N blocks for difficulty calculation
+  // Shorter window = faster response to hashrate changes
+  val ADJUSTMENT_WINDOW: Int = 60  // Last 60 blocks (~60 minutes of history)
   
   // Initial difficulty (production starting point)
   val INITIAL_DIFFICULTY: Long = 0x1f00ffffL
   
   // Difficulty floor - never go below initial difficulty
-  // This prevents difficulty from collapsing during low hashrate periods
   val DIFFICULTY_FLOOR: Long = INITIAL_DIFFICULTY
   
   // Minimum and maximum difficulty bounds
   val MIN_DIFFICULTY: Long = DIFFICULTY_FLOOR
   val MAX_DIFFICULTY: Long = 0xffffffffL
   
-  // Maximum adjustment factor per interval (Bitcoin uses ~4x, we use ±25% for stability)
-  val MAX_ADJUSTMENT_FACTOR: Double = 1.25  // Can increase by 25% max
-  val MIN_ADJUSTMENT_FACTOR: Double = 0.75  // Can decrease by 25% max
+  // Per-block adjustment limits (smoother than Bitcoin's ±25%)
+  // Real-time adjustment allows smaller, more frequent changes
+  val MAX_ADJUSTMENT_FACTOR: Double = 1.10  // Max +10% per block
+  val MIN_ADJUSTMENT_FACTOR: Double = 0.90  // Max -10% per block
   
   /**
    * Calculate the next difficulty based on recent block times
@@ -41,8 +41,8 @@ object DifficultyAdjustment {
    * @return The difficulty bits for the next block
    */
   def calculateDifficulty(blockchain: Blockchain, currentHeight: Int): Long = {
-    // Use initial difficulty for first blocks
-    if (currentHeight < ADJUSTMENT_INTERVAL) {
+    // Use initial difficulty for first blocks (need history for calculation)
+    if (currentHeight <= ADJUSTMENT_WINDOW) {
       return INITIAL_DIFFICULTY
     }
     
@@ -52,63 +52,47 @@ object DifficultyAdjustment {
       case _ => // Calculate below
     }
     
-    // Only adjust at interval boundaries (production: no emergency adjustments)
-    if (currentHeight % ADJUSTMENT_INTERVAL != 0) {
-      // Between adjustments, maintain the last adjusted difficulty
-      // Find the most recent adjustment block
-      val lastAdjustmentHeight = (currentHeight / ADJUSTMENT_INTERVAL) * ADJUSTMENT_INTERVAL
-      
-      if (lastAdjustmentHeight == 0) {
-        // Before first adjustment, use initial
-        return INITIAL_DIFFICULTY
-      }
-      
-      // Get the difficulty from the last adjustment block (use cache)
-      val lastDifficulty = calculateDifficulty(blockchain, lastAdjustmentHeight)
-      return lastDifficulty
-    }
-    
-    // Get the last ADJUSTMENT_INTERVAL blocks
-    val startHeight = currentHeight - ADJUSTMENT_INTERVAL
+    // Real-time difficulty: Look at recent ADJUSTMENT_WINDOW blocks
+    val startHeight = currentHeight - ADJUSTMENT_WINDOW
     val endHeight = currentHeight - 1
     
     val blocks = (startHeight to endHeight).flatMap { h =>
       blockchain.blockHeader(h)
     }
     
-    println(s"\n🔧 Calculating difficulty adjustment at height $currentHeight")
-    println(s"   Analyzing blocks $startHeight to $endHeight")
-    println(s"   Found ${blocks.length} blocks (need $ADJUSTMENT_INTERVAL)")
-    
-    if (blocks.length < ADJUSTMENT_INTERVAL) {
+    if (blocks.length < ADJUSTMENT_WINDOW) {
       // Not enough blocks, use initial difficulty
-      println(s"   ⚠️  Not enough blocks! Using initial difficulty")
       return INITIAL_DIFFICULTY
     }
     
-    // Calculate actual time taken for the interval
+    // Calculate actual time taken for recent blocks
     val firstBlock = blocks.head
     val lastBlock = blocks.last
     val actualTimeMs = lastBlock.header.timestamp - firstBlock.header.timestamp
     
-    // Expected time for the interval
-    val expectedTimeMs = TARGET_BLOCK_TIME_MS * ADJUSTMENT_INTERVAL
+    // Expected time for the window
+    val expectedTimeMs = TARGET_BLOCK_TIME_MS * ADJUSTMENT_WINDOW
     
-    // Calculate adjustment ratio
-    val ratio = actualTimeMs.toDouble / expectedTimeMs.toDouble
-    
-    // Get current difficulty (for now use initial, later store in block)
-    val currentDifficulty = INITIAL_DIFFICULTY
-    
-    // Calculate new difficulty with bounds
-    val adjustmentFactor = if (ratio < MIN_ADJUSTMENT_FACTOR) {
-      // Blocks too fast, make harder
-      MIN_ADJUSTMENT_FACTOR
-    } else if (ratio > MAX_ADJUSTMENT_FACTOR) {
-      // Blocks too slow, make easier
-      MAX_ADJUSTMENT_FACTOR
+    // Get previous block's difficulty (what we're adjusting from)
+    // Use recursion to get previous difficulty (cached, so efficient)
+    val currentDifficulty = if (currentHeight > ADJUSTMENT_WINDOW + 1) {
+      calculateDifficulty(blockchain, currentHeight - 1)
     } else {
-      ratio
+      INITIAL_DIFFICULTY
+    }
+    
+    // Calculate adjustment ratio (how fast/slow blocks are coming)
+    val ratio = expectedTimeMs.toDouble / actualTimeMs.toDouble  // Inverted: >1 means fast, <1 means slow
+    
+    // Apply adjustment factor with per-block limits
+    // ratio > 1 = blocks too fast → increase difficulty (multiply)
+    // ratio < 1 = blocks too slow → decrease difficulty (divide)
+    val adjustmentFactor = if (ratio > MAX_ADJUSTMENT_FACTOR) {
+      MAX_ADJUSTMENT_FACTOR  // Cap maximum increase
+    } else if (ratio < MIN_ADJUSTMENT_FACTOR) {
+      MIN_ADJUSTMENT_FACTOR  // Cap maximum decrease
+    } else {
+      ratio  // Use actual ratio if within bounds
     }
     
     // Apply adjustment: difficulty decreases when blocks are too fast
@@ -118,14 +102,18 @@ object DifficultyAdjustment {
     // Clamp to bounds (enforce difficulty floor)
     val clampedDifficulty = Math.max(MIN_DIFFICULTY, Math.min(MAX_DIFFICULTY, newDifficulty))
     
-    // Production logging
-    val actualBlockTime = actualTimeMs / ADJUSTMENT_INTERVAL
-    println(s"🔧 Difficulty adjustment at height $currentHeight:")
-    println(s"   Target time: ${TARGET_BLOCK_TIME_MS}ms/block")
-    println(s"   Actual time: ${actualBlockTime}ms/block")
-    println(s"   Adjustment: ${if (adjustmentFactor > 1) "+" else ""}${((adjustmentFactor - 1) * 100).toInt}%")
-    println(s"   Old difficulty: ${difficultyDescription(currentDifficulty)}")
-    println(s"   New difficulty: ${difficultyDescription(clampedDifficulty)}")
+    // Real-time adjustment logging (every block)
+    val actualBlockTime = actualTimeMs / ADJUSTMENT_WINDOW
+    val changePercent = ((adjustmentFactor - 1) * 100)
+    
+    // Only log significant changes or periodically
+    if (Math.abs(changePercent) > 1.0 || currentHeight % 10 == 0) {
+      println(s"⚡ Real-time difficulty adjustment at height $currentHeight:")
+      println(f"   Last $ADJUSTMENT_WINDOW blocks: ${actualBlockTime}%.1fms/block (target: ${TARGET_BLOCK_TIME_MS}ms)")
+      println(f"   Adjustment: ${if (adjustmentFactor > 1) "+" else ""}$changePercent%.2f%%")
+      println(s"   Old: ${difficultyDescription(currentDifficulty)}")
+      println(s"   New: ${difficultyDescription(clampedDifficulty)}")
+    }
     
     // Cache the result
     difficultyCache.put(currentHeight, clampedDifficulty)
