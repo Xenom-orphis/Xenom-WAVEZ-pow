@@ -217,6 +217,14 @@ package object appender {
                      .map(_.arr.take(32))
                      .getOrElse(Array.fill(32)(0.toByte))
                    
+                   // DEBUG: Log reconstruction details
+                   println(s"\n🔍 DEBUG - Reconstructing PoW header for validation:")
+                   println(s"   parentId: ${parentBlockId.map("%02x".format(_)).mkString.take(32)}...")
+                   println(s"   stateRoot: ${parentStateRoot.map("%02x".format(_)).mkString.take(32)}...")
+                   println(s"   timestamp: ${block.header.timestamp}")
+                   println(s"   difficultyBits: 0x${blockDifficulty}%08x")
+                   println(s"   mutationVector: ${mutationVector.map("%02x".format(_)).mkString}")
+                   
                    val powHeader = _root_.consensus.BlockHeader(
                      version = 1,
                      parentId = parentBlockId,
@@ -226,6 +234,8 @@ package object appender {
                      nonce = 0L,
                      mutationVector = mutationVector
                    )
+                   
+                   println(s"   Reconstructed header bytes: ${powHeader.bytes().take(64).map("%02x".format(_)).mkString}...")
                    
                    // 6. Validate PoW solution
                    val isValid = pow.Pow.verifyPowFromBytes(

@@ -62,11 +62,11 @@ class PowBlockPersister(
       val mutationVectorPadded = powHeader.mutationVector ++ Array.fill(16)(0.toByte)
       val generationSigForPoW = ByteStr(mutationVectorPadded)
       
-      // For PoW mining: disregard PoS timing rules, use current time
-      // This allows fast block generation based on PoW solution speed
-      val blockTimestamp = System.currentTimeMillis()
+      // CRITICAL: Use timestamp from PoW header (the template timestamp)
+      // Miner solved PoW with this exact timestamp - changing it breaks validation!
+      val blockTimestamp = powHeader.timestamp
       
-      log.info(s"   Using current timestamp: $blockTimestamp (PoS timing disregarded for PoW)")
+      log.info(s"   Using PoW header timestamp: $blockTimestamp (matches template and solution)")
 
       // PoW blocks: empty transactions, rewards handled separately
       // Keep rewardVote = -1 as PoW marker for PoS bypass
