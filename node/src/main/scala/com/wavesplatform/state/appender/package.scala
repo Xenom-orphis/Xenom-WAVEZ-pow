@@ -195,15 +195,16 @@ package object appender {
                    height + 1  // Next block height
                  )
                  
-                 // Log difficulty consensus check
-                 println(s"\n✓ Difficulty consensus check at height ${height + 1}:")
-                 println(f"   Expected difficulty: 0x${expectedDifficulty}%08x")
-                 println(f"   Description: ${com.wavesplatform.mining.DifficultyAdjustment.difficultyDescription(expectedDifficulty)}")
-                 println(s"   Block accepted - difficulty validated by all nodes")
+                 // TODO: Validate PoW solution meets difficulty requirement
+                 // Need to reconstruct consensus.BlockHeader from Waves block
+                 // and call validatePow() to verify the solution
+                 // For now, trust that miners/API validated it
                  
-                 // Difficulty is always correct because we calculate it from blockchain state
-                 // There's no difficulty field in Waves blocks, so we trust the calculation
-                 // This ensures all nodes agree on the same difficulty at each height
+                 // Log difficulty consensus check
+                 println(s"\n✓ Difficulty consensus: height ${height + 1}, difficulty 0x${expectedDifficulty}%08x")
+                 println(f"   ${com.wavesplatform.mining.DifficultyAdjustment.difficultyDescription(expectedDifficulty)}")
+                 println(s"   WARNING: PoW solution not validated in consensus - trusting submitter!")
+                 
                  Right(())
                } else {
                  pos
