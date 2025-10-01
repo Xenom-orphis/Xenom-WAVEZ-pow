@@ -21,12 +21,11 @@ object DifficultyAdjustment {
   // Initial difficulty (production starting point)
   val INITIAL_DIFFICULTY: Long = 0x1f00ffffL
   
-  // Difficulty floor - never go below initial difficulty
-  val DIFFICULTY_FLOOR: Long = INITIAL_DIFFICULTY
-  
   // Minimum and maximum difficulty bounds
-  val MIN_DIFFICULTY: Long = DIFFICULTY_FLOOR
-  val MAX_DIFFICULTY: Long = 0xffffffffL
+  // MIN: Allow difficulty to go very low (hard mining) when hashrate is high
+  // MAX: Cap at maximum value (easy mining) when hashrate is low
+  val MIN_DIFFICULTY: Long = 0x01000000L  // Allow up to ~31x harder than initial
+  val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
   
   // Per-block adjustment limits with ultra-fast window
   // Small window (5 blocks) = need aggressive adjustments
