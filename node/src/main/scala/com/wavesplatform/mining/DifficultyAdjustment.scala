@@ -45,9 +45,19 @@ object DifficultyAdjustment {
     
     // Only adjust at interval boundaries (production: no emergency adjustments)
     if (currentHeight % ADJUSTMENT_INTERVAL != 0) {
-      // Between adjustments, maintain previous difficulty
-      // For simplicity, return initial (in production, would store difficulty in block)
-      return INITIAL_DIFFICULTY
+      // Between adjustments, maintain the last adjusted difficulty
+      // Find the most recent adjustment block
+      val lastAdjustmentHeight = (currentHeight / ADJUSTMENT_INTERVAL) * ADJUSTMENT_INTERVAL
+      
+      if (lastAdjustmentHeight == 0) {
+        // Before first adjustment, use initial
+        return INITIAL_DIFFICULTY
+      }
+      
+      // Get the difficulty from the last adjustment block
+      // Since we store it in the block, we can read it back
+      // For now, we'll recursively calculate it
+      return calculateDifficulty(blockchain, lastAdjustmentHeight)
     }
     
     // Get the last ADJUSTMENT_INTERVAL blocks
