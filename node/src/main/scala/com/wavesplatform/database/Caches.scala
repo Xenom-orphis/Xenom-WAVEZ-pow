@@ -7,6 +7,7 @@ import com.wavesplatform.account.{Address, Alias}
 import com.wavesplatform.block.{Block, SignedBlockHeader}
 import com.wavesplatform.common.state.ByteStr
 import com.wavesplatform.common.utils.EitherExt2.*
+import com.wavesplatform.crypto.DigestLength
 import com.wavesplatform.database.protobuf.{BlockMeta as PBBlockMeta, BlockMetaExt}
 import com.wavesplatform.protobuf.ByteStringExt
 import com.wavesplatform.protobuf.block.PBBlocks
@@ -15,6 +16,7 @@ import com.wavesplatform.state.*
 import com.wavesplatform.transaction.Asset.{IssuedAsset, Waves}
 import com.wavesplatform.transaction.{Asset, DiscardedBlocks, Transaction}
 import com.wavesplatform.utils.ObservedLoadingCache
+import monix.eval.Coeval
 import monix.reactive.Observer
 import org.github.jamm.MemoryMeter
 
@@ -400,7 +402,21 @@ object Caches {
 
   def toHitSource(m: PBBlockMeta): ByteStr = (if (m.vrf.isEmpty) m.getHeader.generationSignature else m.vrf).toByteStr
 
-  def toSignedHeader(m: PBBlockMeta): SignedBlockHeader = SignedBlockHeader(PBBlocks.vanilla(m.getHeader), m.signature.toByteStr)
+  def toSignedHeader(m: PBBlockMeta): SignedBlockHeader = {
+    val header = PBBlocks.vanilla(m.getHeader)
+    val signature = m.signature.toByteStr
+    // For PoW blocks (version >= 6), the ID is the headerHash, not recalculated from header
+    // We need to preserve the stored headerHash to avoid ID mismatch
+    if (m.headerHash.size() == DigestLength) {
+      // PoW block: override the ID calculation to use stored headerHash
+      new SignedBlockHeader(header, signature) {
+        override val id: Coeval[ByteStr] = Coeval.now(m.headerHash.toByteStr)
+      }
+    } else {
+      // PoS block: ID = signature (normal behavior)
+      SignedBlockHeader(header, signature)
+    }
+  }
 
   def cache[K <: AnyRef, V <: AnyRef](maximumSize: Int, loader: K => V): LoadingCache[K, V] =
     CacheBuilder
