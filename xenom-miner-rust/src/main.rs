@@ -94,11 +94,7 @@ fn run_bruteforce(header_prefix: Arc<Vec<u8>>, bits: &num_bigint::BigUint, mv_le
     let start = Instant::now();
     let threads = num_cpus::get();
 
-    rayon::ThreadPoolBuilder::new()
-        .num_threads(threads)
-        .build_global()
-        .unwrap();
-
+    // Thread pool already initialized in main(), just use it
     (0..threads).into_par_iter().for_each(|tid| {
         let mut rng = rand::thread_rng();
         let mut local_nonce: u64 = tid as u64;

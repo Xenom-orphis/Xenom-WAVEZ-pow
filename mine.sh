@@ -45,8 +45,8 @@ while true; do
         --threads 0 \
         --brute 2>&1)
     
-    if echo "$RESULT" | grep -q "FOUND solution"; then
-        MV=$(echo "$RESULT" | grep "FOUND solution" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+    if echo "$RESULT" | grep -q "FOUND"; then
+        MV=$(echo "$RESULT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
         echo "✅ Found solution: $MV"
         
         # Submit the mined block
