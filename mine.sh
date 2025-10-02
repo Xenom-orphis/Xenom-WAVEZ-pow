@@ -41,8 +41,9 @@ while true; do
         --header-hex "$HEADER" \
         --bits-hex $DIFFICULTY \
         --mv-len 16 \
-        --population 4096 \
-        --generations 10000 2>&1)
+        --threads 8 \
+        --population 16384 \
+        --generations 50000 2>&1)
     
     if echo "$RESULT" | grep -q "FOUND solution"; then
         MV=$(echo "$RESULT" | grep "FOUND solution" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')

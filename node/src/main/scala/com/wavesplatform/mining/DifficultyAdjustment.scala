@@ -14,9 +14,9 @@ object DifficultyAdjustment {
   // Target block time: 60 seconds
   val TARGET_BLOCK_TIME_MS: Long = 60000L
   
-  // Ultra-fast adjustment: Look at recent N blocks for difficulty calculation
-  // Very short window = instant response to hashrate changes (5-10 seconds of history)
-  val ADJUSTMENT_WINDOW: Int = 5  // Last 5 blocks (~5 seconds at current speed)
+  // Gradual adjustment: Look at recent N blocks for difficulty calculation
+  // Balance between responsiveness and stability
+  val ADJUSTMENT_WINDOW: Int = 10  // Last 10 blocks (~10 minutes at target speed)
   
   // Initial difficulty (production starting point)
   val INITIAL_DIFFICULTY: Long = 0x1f00ffffL
@@ -27,10 +27,10 @@ object DifficultyAdjustment {
   val MIN_DIFFICULTY: Long = 0x00000001L  // Minimum possible (extremely hard)
   val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
   
-  // Per-block adjustment limits with ultra-fast window
-  // Small window (5 blocks) = need aggressive adjustments
-  val MAX_ADJUSTMENT_FACTOR: Double = 1.50  // Max +50% per block
-  val MIN_ADJUSTMENT_FACTOR: Double = 0.50  // Max -50% per block
+  // Per-block adjustment limits - gradual changes for stability
+  // Smaller adjustments = smoother difficulty curve
+  val MAX_ADJUSTMENT_FACTOR: Double = 1.10  // Max +10% per block
+  val MIN_ADJUSTMENT_FACTOR: Double = 0.90  // Max -10% per block
   
   /**
    * Calculate the next difficulty based on recent block times
@@ -102,12 +102,12 @@ object DifficultyAdjustment {
     // Clamp to bounds (enforce difficulty floor)
     val clampedDifficulty = Math.max(MIN_DIFFICULTY, Math.min(MAX_DIFFICULTY, newDifficulty))
     
-    // Ultra-fast adjustment logging (every block with small window)
+    // Difficulty adjustment logging
     val actualBlockTime = actualTimeMs / ADJUSTMENT_WINDOW
     val changePercent = ((1.0 / adjustmentFactor - 1) * 100)  // Inverted because we divide
     
-    // Log every adjustment since window is tiny (5 blocks)
-    println(s"⚡ Ultra-fast difficulty adjustment at height $currentHeight:")
+    // Log adjustment
+    println(s"⚖️  Difficulty adjustment at height $currentHeight:")
     println(f"   Last $ADJUSTMENT_WINDOW blocks: ${actualBlockTime}%.0fms/block (target: ${TARGET_BLOCK_TIME_MS}ms)")
     println(f"   Speed ratio: ${ratio}%.2fx (${if (ratio > 1) "TOO FAST" else "too slow"})")
     println(f"   Difficulty change: ${if (changePercent > 0) "+" else ""}$changePercent%.1f%% (${if (ratio > 1) "HARDER" else "easier"})")
