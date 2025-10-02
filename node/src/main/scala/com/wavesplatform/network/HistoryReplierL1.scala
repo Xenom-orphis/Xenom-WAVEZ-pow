@@ -28,22 +28,16 @@ class HistoryReplierL1(score: => BigInt, history: History, settings: Synchroniza
 
   override def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = msg match {
     case GetSignatures(otherSigs) =>
-      println(s"📥 [MAIN] Received GetSignatures from ${ctx.channel().remoteAddress()}, known sigs: ${otherSigs.size}")
-      val blockIds = history.blockIdsAfter(otherSigs, settings.maxRollback)
-      println(s"📤 [MAIN] Responding with ${blockIds.size} block IDs")
-      respondWith(ctx, Future(Signatures(blockIds)))
+      respondWith(ctx, Future(Signatures(history.blockIdsAfter(otherSigs, settings.maxRollback))))
 
     case GetBlock(sig) =>
-      println(s"📥 [MAIN] Received GetBlock request from ${ctx.channel().remoteAddress()} for block ${sig}")
       respondWith(
         ctx,
         Future(history.loadBlockBytes(sig))
           .map {
             case Some((blockVersion, bytes)) =>
-              println(s"📤 [MAIN] Sending block ${sig} (version $blockVersion, ${bytes.length} bytes)")
               RawBytes(if (blockVersion < Block.ProtoBlockVersion) BlockSpec.messageCode else PBBlockSpec.messageCode, bytes)
             case _ => 
-              println(s"❌ [MAIN] Block ${sig} not found in history!")
               throw new NoSuchElementException(s"Error loading block $sig")
           }
       )

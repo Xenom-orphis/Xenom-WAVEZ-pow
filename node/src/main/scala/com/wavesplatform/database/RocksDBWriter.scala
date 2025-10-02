@@ -505,10 +505,10 @@ class RocksDBWriter(
         }
       }
 
-      println(s"💾 [STORAGE] Storing block at height $height with ID: ${blockMeta.id}, headerHash: ${if (blockMeta.headerHash.isEmpty) "None" else blockMeta.headerHash.toByteStr.toString}, signature: ${blockMeta.signature.toByteStr}")
+      val storedId = blockMeta.id
       rw.put(Keys.blockMetaAt(Height(height)), Some(blockMeta))
-      rw.put(Keys.heightOf(blockMeta.id), Some(height))
-      blockHeightCache.put(blockMeta.id, Some(height))
+      rw.put(Keys.heightOf(storedId), Some(height))
+      blockHeightCache.put(storedId, Some(height))
 
       blockMeta.header.flatMap(_.challengedHeader.map(_.generator.toAddress())) match {
         case Some(addr) =>
@@ -1291,11 +1291,8 @@ class RocksDBWriter(
       .map(addressId => db.get(Keys.idToAddress(addressId)))
   }
 
-  override protected def loadBlockHeight(blockId: BlockId): Option[Int] = {
-    val result = readOnly(_.get(Keys.heightOf(blockId)))
-    println(s"🔍 [LOOKUP] heightOf($blockId) = $result")
-    result
-  }
+  override protected def loadBlockHeight(blockId: BlockId): Option[Int] =
+    readOnly(_.get(Keys.heightOf(blockId)))
 
   override def leaseDetails(leaseId: ByteStr): Option[LeaseDetails] = readOnly { db =>
     for {

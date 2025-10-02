@@ -43,17 +43,18 @@ abstract class Caches extends Blockchain with Storage {
   protected def loadBlockMeta(height: Height): Option[PBBlockMeta]
   protected def loadTxs(height: Height): Seq[Transaction]
 
-  override def height: Int = current.height
 
   override def score: BigInt = current.score
+
+  override def height: Int = current.height
 
   override def lastBlock: Option[Block] = current.block
 
   override def blockHeader(height: Int): Option[SignedBlockHeader] =
-    if (current.height == height) current.signedHeader else loadBlockMeta(Height(height)).map(toSignedHeader)
+    loadBlockMeta(Height(height)).map(toSignedHeader)
 
   override def hitSource(height: Int): Option[ByteStr] =
-    if (current.height == height) current.hitSource else loadBlockMeta(Height(height)).map(toHitSource)
+    loadBlockMeta(Height(height)).map(toHitSource)
 
   def loadHeightOf(blockId: ByteStr): Option[Int]
 
@@ -396,7 +397,14 @@ object Caches {
     lazy val score: BigInt                           = meta.filterNot(_.totalScore.isEmpty).fold(BigInt(0))(m => BigInt(m.totalScore.toByteArray))
     lazy val block: Option[Block]                    = signedHeader.map(h => Block(h.header, h.signature, transactions))
     lazy val signedHeader: Option[SignedBlockHeader] = meta.map(toSignedHeader)
-    lazy val id: Option[ByteStr]                     = meta.map(_.id)
+    lazy val id: Option[ByteStr] = {
+      val metaId = meta.map(_.id)
+      val headerIdOpt = signedHeader.map(_.id())
+      if (metaId != headerIdOpt) {
+        println(s"⚠️  [ID MISMATCH] Height $height: meta.id=${metaId.map(_.toString.take(10))} vs header.id=${headerIdOpt.map(_.toString.take(10))}")
+      }
+      metaId
+    }
     lazy val hitSource: Option[ByteStr]              = meta.map(toHitSource)
   }
 
@@ -405,14 +413,23 @@ object Caches {
   def toSignedHeader(m: PBBlockMeta): SignedBlockHeader = {
     val header = PBBlocks.vanilla(m.getHeader)
     val signature = m.signature.toByteStr
+    val headerHashStr = if (m.headerHash.size() == DigestLength) m.headerHash.toByteStr.toString.take(15) else "None"
     // For PoW blocks (version >= 6), the ID is the headerHash, not recalculated from header
     // We need to preserve the stored headerHash to avoid ID mismatch
     if (m.headerHash.size() == DigestLength) {
+      println(s"⚙️  [TOSIGNEDHEADER] PoW block: stored headerHash = $headerHashStr")
       // PoW block: override the ID calculation to use stored headerHash
-      new SignedBlockHeader(header, signature) {
-        override val id: Coeval[ByteStr] = Coeval.now(m.headerHash.toByteStr)
+      val result = new SignedBlockHeader(header, signature) {
+        override val id: Coeval[ByteStr] = {
+          val overriddenId = m.headerHash.toByteStr
+          println(s"   🆔 [ID OVERRIDE] Returning overridden ID: ${overriddenId.toString.take(15)}")
+          Coeval.now(overriddenId)
+        }
       }
+      println(s"   ✅ [RESULT] result.id() = ${result.id().toString.take(15)}")
+      result
     } else {
+      println(s"⚙️  [TOSIGNEDHEADER] PoS block: using signature as ID")
       // PoS block: ID = signature (normal behavior)
       SignedBlockHeader(header, signature)
     }

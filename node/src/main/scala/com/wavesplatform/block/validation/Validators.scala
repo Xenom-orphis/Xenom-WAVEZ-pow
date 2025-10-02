@@ -17,7 +17,9 @@ object Validators {
     (for {
       _ <- Either.cond(Block.validateReferenceLength(b.header.reference.arr.length), (), "Incorrect reference")
       genSigLength = if (b.header.version < ProtoBlockVersion) GenerationSignatureLength else GenerationVRFSignatureLength
-      _ <- Either.cond(b.header.generationSignature.arr.length == genSigLength, (), "Incorrect generationSignature")
+      // Skip generationSignature validation for PoW blocks (version >= 6) - they use mutation vector (16 bytes)
+      isPowBlock = b.header.version >= 6
+      _ <- if (isPowBlock) Right(()) else Either.cond(b.header.generationSignature.arr.length == genSigLength, (), "Incorrect generationSignature")
       _ <- Either.cond(b.header.generator.arr.length == KeyLength, (), "Incorrect signer")
       _ <- Either.cond(
         b.header.version > 2 || b.header.featureVotes.isEmpty,
