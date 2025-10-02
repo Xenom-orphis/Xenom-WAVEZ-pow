@@ -28,7 +28,10 @@ class HistoryReplierL1(score: => BigInt, history: History, settings: Synchroniza
 
   override def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = msg match {
     case GetSignatures(otherSigs) =>
-      respondWith(ctx, Future(Signatures(history.blockIdsAfter(otherSigs, settings.maxRollback))))
+      println(s"📥 [MAIN] Received GetSignatures from ${ctx.channel().remoteAddress()}, known sigs: ${otherSigs.size}")
+      val blockIds = history.blockIdsAfter(otherSigs, settings.maxRollback)
+      println(s"📤 [MAIN] Responding with ${blockIds.size} block IDs")
+      respondWith(ctx, Future(Signatures(blockIds)))
 
     case GetBlock(sig) =>
       respondWith(

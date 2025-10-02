@@ -90,9 +90,15 @@ object RxExtensionLoader extends ScorexLogging {
                     s"${id(ch)} Requesting signatures${if (optimistic) " optimistically" else ""}, last ${knownSigs.length} are ${formatSignatures(knownSigs)}"
                   )
 
+                  println(s"📬 [PEER] Sending GetSignatures to ${id(ch)}, known: ${knownSigs.size} sigs")
                   val blacklisting = scheduleBlacklist(ch, s"Timeout loading extension").runAsyncLogErr
                   ch.writeAndFlush(GetSignatures(knownSigs)).addListener { (f: ChannelFuture) =>
-                    if (!f.isSuccess) log.trace(s"Error requesting signatures: $ch", f.cause())
+                    if (!f.isSuccess) {
+                      println(s"❌ [PEER] Failed to send GetSignatures: ${f.cause()}")
+                      log.trace(s"Error requesting signatures: $ch", f.cause())
+                    } else {
+                      println(s"✅ [PEER] GetSignatures sent successfully")
+                    }
                   }
 
                   state.withLoaderState(LoaderState.ExpectingSignatures(best, knownSigs, blacklisting))
@@ -124,12 +130,17 @@ object RxExtensionLoader extends ScorexLogging {
     }
 
     def onNewSignatures(state: State, ch: Channel, sigs: Signatures): State = {
+      println(s"📨 [PEER] Received Signatures from ${id(ch)}: ${sigs.signatures.size} signatures")
+      println(s"🔍 [PEER] Current loader state: ${state.loaderState}")
       state.loaderState match {
         case LoaderState.ExpectingSignatures(c, _, _) if c.channel == ch && sigs.signatures.isEmpty =>
+          println(s"⚠️  [PEER] Empty signatures - peer on fork!")
           peerDatabase.blacklistAndClose(ch, s"Peer did not return any signatures and is likely on a fork")
           syncNext(state.withIdleLoader)
         case LoaderState.ExpectingSignatures(c, known, _) if c.channel == ch =>
+          println(s"✅ [PEER] Loader state matches, processing signatures. Known: ${known.size}")
           val (_, unknown) = sigs.signatures.span(id => known.contains(id))
+          println(s"🆕 [PEER] Unknown signatures: ${unknown.size}")
 
           val firstInvalid = sigs.signatures.view.flatMap { sig =>
             invalidBlocks.find(sig).map(sig -> _)
@@ -137,13 +148,16 @@ object RxExtensionLoader extends ScorexLogging {
 
           firstInvalid match {
             case Some((invalidBlock, reason)) =>
+              println(s"❌ [PEER] Invalid block detected: $invalidBlock, reason: $reason")
               peerDatabase.blacklistAndClose(ch, s"Signatures contain invalid block(s): $invalidBlock, $reason")
               syncNext(state.withIdleLoader)
             case None =>
               if (unknown.isEmpty) {
+                println(s"✅ [PEER] All signatures already known - sync complete")
                 log.trace(s"${id(ch)} Received empty extension signatures list, sync with node complete")
                 state.withIdleLoader
               } else {
+                println(s"📥 [PEER] Requesting ${unknown.size} blocks from ${id(ch)}")
                 log.trace(s"${id(ch)} Requesting ${unknown.size} blocks")
                 val blacklistingAsync = scheduleBlacklist(ch, "Timeout loading first requested block").runAsyncLogErr
                 unknown.foreach { s =>
@@ -151,6 +165,7 @@ object RxExtensionLoader extends ScorexLogging {
                   if (isLightMode) ch.write(GetSnapshot(s))
                 }
                 ch.flush()
+                println(s"✅ [PEER] Block requests sent, waiting for blocks...")
                 state.withLoaderState(
                   LoaderState.ExpectingBlocksWithSnapshots(
                     c,
@@ -165,6 +180,7 @@ object RxExtensionLoader extends ScorexLogging {
               }
           }
         case _ =>
+          println(s"❌ [PEER] State mismatch! Expected ExpectingSignatures for ${id(ch)}, got: ${state.loaderState}")
           log.trace(s"${id(ch)} Received unexpected signatures ${formatSignatures(sigs.signatures)}, ignoring at $state")
           state
       }

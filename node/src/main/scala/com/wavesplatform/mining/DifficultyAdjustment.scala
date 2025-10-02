@@ -11,26 +11,26 @@ object DifficultyAdjustment {
   // Cache to avoid recalculating the same difficulty
   private val difficultyCache = new java.util.concurrent.ConcurrentHashMap[Int, Long]()
   
-  // Target block time: 3 seconds (fast blocks!)
-  val TARGET_BLOCK_TIME_MS: Long = 3000L
+  // Target block time: 60 seconds (1 minute blocks)
+  val TARGET_BLOCK_TIME_MS: Long = 60000L
   
   // Gradual adjustment: Look at recent N blocks for difficulty calculation
-  // Balance between responsiveness and stability
-  val ADJUSTMENT_WINDOW: Int = 10  // Last 10 blocks (~30 seconds at target speed)
+  // Longer window = more stable, less prone to overshooting
+  val ADJUSTMENT_WINDOW: Int = 20  // Last 20 blocks (~20 minutes at target speed)
   
-  // Initial difficulty (reasonable for brute-force miner)
+  // Initial difficulty (easier for CPU miner)
   val INITIAL_DIFFICULTY: Long = 0x1f00ffffL  // Standard starting point
   
   // Minimum and maximum difficulty bounds
-  // MIN: No floor - allow difficulty to decrease indefinitely when hashrate is high
+  // MIN: Floor to prevent getting too hard for CPU
   // MAX: Cap at maximum value (easy mining) when hashrate is low
-  val MIN_DIFFICULTY: Long = 0x00000001L  // Minimum possible (extremely hard)
+  val MIN_DIFFICULTY: Long = 0x1e000000L  // Floor to keep CPU-mineable
   val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
   
-  // Per-block adjustment limits - moderate changes for stability
-  // Brute-force miner can handle faster adjustments
-  val MAX_ADJUSTMENT_FACTOR: Double = 1.10  // Max +10% per block
-  val MIN_ADJUSTMENT_FACTOR: Double = 0.90  // Max -10% per block
+  // Per-block adjustment limits - very conservative to prevent oscillation
+  // Smaller changes = more stable difficulty, less overshooting
+  val MAX_ADJUSTMENT_FACTOR: Double = 1.05  // Max +5% per block
+  val MIN_ADJUSTMENT_FACTOR: Double = 0.95  // Max -5% per block
   
   /**
    * Calculate the next difficulty based on recent block times

@@ -35,14 +35,22 @@ object RxScoreObserver extends ScorexLogging {
         else r
     }
 
-    if (bestScore > localScore && bestScoreChannels.nonEmpty) bestChannel match {
-      case Some(c) if bestScoreChannels.contains(c) => Some(BestChannel(c, bestScore))
-      case _ =>
-        val head = bestScoreChannels.head
-        log.trace(s"${id(head)} Publishing new best channel with score=$bestScore > localScore $localScore")
-        Some(BestChannel(head, bestScore))
+    println(s"🔍 [SYNC DEBUG] calcSyncWith: bestScore=$bestScore, localScore=$localScore, channels=${bestScoreChannels.size}")
+    
+    if (bestScore > localScore && bestScoreChannels.nonEmpty) {
+      println(s"✅ [SYNC] Should sync! Remote score ($bestScore) > local ($localScore)")
+      bestChannel match {
+        case Some(c) if bestScoreChannels.contains(c) => Some(BestChannel(c, bestScore))
+        case _ =>
+          val head = bestScoreChannels.head
+          println(s"📡 [SYNC] Requesting sync from ${id(head)} with score $bestScore")
+          log.trace(s"${id(head)} Publishing new best channel with score=$bestScore > localScore $localScore")
+          Some(BestChannel(head, bestScore))
+      }
+    } else {
+      println(s"⏸️  [SYNC] No sync needed (bestScore=$bestScore, localScore=$localScore)")
+      None
     }
-    else None
   }
 
   def apply(
@@ -85,6 +93,7 @@ object RxScoreObserver extends ScorexLogging {
         .collect {
           case (ch, score) if ch.isOpen =>
             scores.put(ch, score)
+            println(s"➕ [SCORE CACHE] Added score $score for channel ${id(ch)}, cache size=${scores.size()}")
             log.trace(s"${id(ch)} New remote score $score")
             None
         }
@@ -94,7 +103,9 @@ object RxScoreObserver extends ScorexLogging {
         .mergeMap(identity)
         .observeOn(scheduler)
         .map { ch =>
+          println(s"➖ [SCORE CACHE] Removing score for channel ${id(ch)} (closed/timeout), cache size before=${scores.size()}")
           scores.invalidate(ch)
+          println(s"   [SCORE CACHE] Cache size after removal=${scores.size()}")
           if (currentBestChannel.contains(ch)) {
             log.debug(s"${id(ch)} Best channel has been closed")
             currentBestChannel = None

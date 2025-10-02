@@ -25,7 +25,9 @@ class MessageObserverL1 extends ChannelInboundHandlerAdapter {
 
   override def channelRead(ctx: ChannelHandlerContext, msg: AnyRef): Unit = msg match {
     case b: Block                       => blocks.onNext((ctx.channel(), b))
-    case sc: BigInt                     => blockchainScores.onNext((ctx.channel(), sc))
+    case sc: BigInt                     => 
+      println(s"🔔 [DEBUG] Received score $sc from ${ctx.channel().remoteAddress()}")
+      blockchainScores.onNext((ctx.channel(), sc))
     case s: Signatures                  => signatures.onNext((ctx.channel(), s))
     case mbInv: MicroBlockInv           => microblockInvs.onNext((ctx.channel(), mbInv))
     case mb: MicroBlockResponse         => microblockResponses.onNext((ctx.channel(), mb))
