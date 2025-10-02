@@ -37,13 +37,13 @@ while true; do
     echo "Mining new block $HEIGHT (timestamp: $TIMESTAMP)"
     echo "Header prefix: ${HEADER:0:32}..."
     echo "Difficulty: 0x$DIFFICULTY"
+    # Use brute-force mode (MUCH faster than genetic algorithm!)
     RESULT=$($MINER_BIN \
         --header-hex "$HEADER" \
         --bits-hex $DIFFICULTY \
         --mv-len 16 \
-        --threads 8 \
-        --population 32768 \
-        --generations 200000 2>&1)
+        --threads 0 \
+        --brute 2>&1)
     
     if echo "$RESULT" | grep -q "FOUND solution"; then
         MV=$(echo "$RESULT" | grep "FOUND solution" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')

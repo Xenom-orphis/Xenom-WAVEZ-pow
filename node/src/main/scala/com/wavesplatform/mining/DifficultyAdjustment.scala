@@ -11,15 +11,15 @@ object DifficultyAdjustment {
   // Cache to avoid recalculating the same difficulty
   private val difficultyCache = new java.util.concurrent.ConcurrentHashMap[Int, Long]()
   
-  // Target block time: 60 seconds
-  val TARGET_BLOCK_TIME_MS: Long = 60000L
+  // Target block time: 3 seconds (fast blocks!)
+  val TARGET_BLOCK_TIME_MS: Long = 3000L
   
   // Gradual adjustment: Look at recent N blocks for difficulty calculation
   // Balance between responsiveness and stability
-  val ADJUSTMENT_WINDOW: Int = 10  // Last 10 blocks (~10 minutes at target speed)
+  val ADJUSTMENT_WINDOW: Int = 10  // Last 10 blocks (~30 seconds at target speed)
   
-  // Initial difficulty (production starting point)
-  val INITIAL_DIFFICULTY: Long = 0x1f00ffffL
+  // Initial difficulty (reasonable for brute-force miner)
+  val INITIAL_DIFFICULTY: Long = 0x1f00ffffL  // Standard starting point
   
   // Minimum and maximum difficulty bounds
   // MIN: No floor - allow difficulty to decrease indefinitely when hashrate is high
@@ -27,10 +27,10 @@ object DifficultyAdjustment {
   val MIN_DIFFICULTY: Long = 0x00000001L  // Minimum possible (extremely hard)
   val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
   
-  // Per-block adjustment limits - very gradual changes for stability
-  // Smaller adjustments = smoother difficulty curve, easier for miner
-  val MAX_ADJUSTMENT_FACTOR: Double = 1.05  // Max +5% per block
-  val MIN_ADJUSTMENT_FACTOR: Double = 0.95  // Max -5% per block
+  // Per-block adjustment limits - moderate changes for stability
+  // Brute-force miner can handle faster adjustments
+  val MAX_ADJUSTMENT_FACTOR: Double = 1.10  // Max +10% per block
+  val MIN_ADJUSTMENT_FACTOR: Double = 0.90  // Max -10% per block
   
   /**
    * Calculate the next difficulty based on recent block times
@@ -40,6 +40,9 @@ object DifficultyAdjustment {
    * @return The difficulty bits for the next block
    */
   def calculateDifficulty(blockchain: Blockchain, currentHeight: Int): Long = {
+    // DISABLE ADJUSTMENT: Uncomment this line to keep difficulty constant
+    // return INITIAL_DIFFICULTY
+    
     // Use initial difficulty for first blocks (need history for calculation)
     if (currentHeight <= ADJUSTMENT_WINDOW) {
       return INITIAL_DIFFICULTY
