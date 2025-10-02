@@ -264,7 +264,8 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
         pos,
         appenderScheduler
       )(block, None).map(_.map(_ => ())),
-      appenderScheduler
+      appenderScheduler,
+      allChannels  // For broadcasting PoW blocks to network peers
     )
 
     val processFork =

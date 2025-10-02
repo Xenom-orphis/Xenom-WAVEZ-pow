@@ -4,11 +4,13 @@ import com.wavesplatform.block.{Block, SignedBlockHeader}
 import com.wavesplatform.common.state.ByteStr
 import com.wavesplatform.crypto
 import com.wavesplatform.lang.ValidationError
+import com.wavesplatform.network.{BlockForged, ChannelGroupExt}
 import com.wavesplatform.settings.WavesSettings
 import com.wavesplatform.state.Blockchain
 import com.wavesplatform.transaction.BlockchainUpdater
 import com.wavesplatform.utils.{ScorexLogging, Time}
 import com.wavesplatform.wallet.Wallet
+import io.netty.channel.group.ChannelGroup
 import monix.eval.Task
 import monix.execution.Scheduler
 
@@ -24,7 +26,8 @@ class PowBlockPersister(
     time: Time,
     settings: WavesSettings,
     blockAppender: Block => Task[Either[ValidationError, Unit]],
-    scheduler: Scheduler
+    scheduler: Scheduler,
+    allChannels: ChannelGroup
 ) extends ScorexLogging {
 
   /**
@@ -128,6 +131,13 @@ class PowBlockPersister(
       result match {
         case Right(_) =>
           log.info(s"✅ PoW block successfully added to blockchain at height ${blockchainUpdater.height}")
+          
+          // Broadcast to network peers (like regular PoS miner does)
+          if (blockchainUpdater.isLastBlockId(block.id())) {
+            allChannels.broadcast(BlockForged(block))
+            log.info(s"📡 Broadcast PoW block ${block.id().toString.take(16)}... to network peers")
+          }
+          
           Right(block.id().toString)
         case Left(error) =>
           log.error(s"❌ Failed to append PoW block: $error")
