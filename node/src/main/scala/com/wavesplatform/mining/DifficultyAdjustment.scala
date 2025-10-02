@@ -27,10 +27,10 @@ object DifficultyAdjustment {
   val MIN_DIFFICULTY: Long = 0x00000001L  // Minimum possible (extremely hard)
   val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
   
-  // Per-block adjustment limits - gradual changes for stability
-  // Smaller adjustments = smoother difficulty curve
-  val MAX_ADJUSTMENT_FACTOR: Double = 1.10  // Max +10% per block
-  val MIN_ADJUSTMENT_FACTOR: Double = 0.90  // Max -10% per block
+  // Per-block adjustment limits - very gradual changes for stability
+  // Smaller adjustments = smoother difficulty curve, easier for miner
+  val MAX_ADJUSTMENT_FACTOR: Double = 1.05  // Max +5% per block
+  val MIN_ADJUSTMENT_FACTOR: Double = 0.95  // Max -5% per block
   
   /**
    * Calculate the next difficulty based on recent block times

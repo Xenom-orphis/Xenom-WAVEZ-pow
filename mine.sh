@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NODE_URL="http://127.0.0.1:36670"
+NODE_URL="http://127.0.0.1:36669"  # Main node (seed)
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 
 # Check if miner binary exists
@@ -42,8 +42,8 @@ while true; do
         --bits-hex $DIFFICULTY \
         --mv-len 16 \
         --threads 8 \
-        --population 16384 \
-        --generations 50000 2>&1)
+        --population 32768 \
+        --generations 200000 2>&1)
     
     if echo "$RESULT" | grep -q "FOUND solution"; then
         MV=$(echo "$RESULT" | grep "FOUND solution" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
