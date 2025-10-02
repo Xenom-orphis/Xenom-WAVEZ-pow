@@ -200,7 +200,7 @@ object Blockchain {
     def featureApprovalHeight(feature: Short): Option[Int]   = blockchain.approvedFeatures.get(feature)
 
     def blockVersionAt(height: Int): Byte =
-      if (isFeatureActivated(BlockchainFeatures.BlockV5, height)) ProtoBlockVersion
+      if (isFeatureActivated(BlockchainFeatures.BlockV5, height)) PowBlockVersion  // PoW uses version 6
       else if (isFeatureActivated(BlockchainFeatures.BlockReward, height)) {
         if (blockchain.activatedFeatures(BlockchainFeatures.BlockReward.id) == height) NgBlockVersion else RewardBlockVersion
       } else if (blockchain.settings.functionalitySettings.blockVersion3AfterHeight + 1 < height) NgBlockVersion

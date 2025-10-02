@@ -74,14 +74,14 @@ class PowBlockPersister(
       // PoW blocks: empty transactions, rewards handled separately
       // Keep rewardVote = -1 as PoW marker for PoS bypass
       val transactions = Seq.empty
-      val txRoot = com.wavesplatform.block.mkTransactionsRoot(5.toByte, transactions)
+      val txRoot = com.wavesplatform.block.mkTransactionsRoot(6.toByte, transactions)
 
       // Create Waves BlockHeader with PoW data embedded
       // CRITICAL: Store PoW validation data in block for consensus
       // - baseTarget: difficulty bits (normally PoS target, repurposed for PoW)
       // - generationSignature: mutation vector (16 bytes + 16 padding)
       val wavesHeader = com.wavesplatform.block.BlockHeader(
-        version = 5.toByte,  // Version 5 required by blockchain
+        version = 6.toByte,  // Version 6 = PoW blocks (uses difficulty for score)
         timestamp = blockTimestamp,  // Current time - ignore PoS delay rules
         reference = parentReference,
         baseTarget = baseTarget,  // PoW: difficulty bits (was PoS base target)

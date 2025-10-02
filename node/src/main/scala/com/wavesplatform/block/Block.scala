@@ -31,7 +31,17 @@ case class BlockHeader(
     stateHash: Option[ByteStr],
     challengedHeader: Option[ChallengedHeader]
 ) {
-  val score: Coeval[BigInt] = Coeval.evalOnce((BigInt("18446744073709551616") / baseTarget).ensuring(_ > 0))
+  val score: Coeval[BigInt] = Coeval.evalOnce {
+    // Version 6+ = PoW blocks use difficulty directly as score
+    // Version 5 and below = PoS blocks use inverse baseTarget formula
+    if (version >= 6) {
+      // PoW: baseTarget stores difficulty bits, use as-is for score
+      BigInt(baseTarget).ensuring(_ > 0)
+    } else {
+      // PoS: higher baseTarget = easier = lower score
+      (BigInt("18446744073709551616") / baseTarget).ensuring(_ > 0)
+    }
+  }
 }
 
 case class ChallengedHeader(
@@ -263,6 +273,7 @@ object Block {
   val NgBlockVersion: Byte      = 3
   val RewardBlockVersion: Byte  = 4
   val ProtoBlockVersion: Byte   = 5
+  val PowBlockVersion: Byte     = 6  // PoW consensus blocks
 
   // Merkle
   implicit class BlockTransactionsRootOps(private val block: Block) extends AnyVal {
