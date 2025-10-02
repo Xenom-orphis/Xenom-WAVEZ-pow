@@ -187,6 +187,7 @@ object RxExtensionLoader extends ScorexLogging {
     }
 
     def onBlock(state: State, ch: Channel, block: Block): State = {
+      println(s"📦 [PEER] Received block from ${id(ch)}: id=${block.id()}, timestamp=${block.header.timestamp}")
       state.loaderState match {
         case LoaderState.ExpectingBlocksWithSnapshots(c, requested, expectedBlocks, receivedBlocks, expectedSnapshots, receivedSnapshots, _)
             if c.channel == ch && expectedBlocks.contains(block.id()) =>

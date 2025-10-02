@@ -34,13 +34,17 @@ class HistoryReplierL1(score: => BigInt, history: History, settings: Synchroniza
       respondWith(ctx, Future(Signatures(blockIds)))
 
     case GetBlock(sig) =>
+      println(s"📥 [MAIN] Received GetBlock request from ${ctx.channel().remoteAddress()} for block ${sig}")
       respondWith(
         ctx,
         Future(history.loadBlockBytes(sig))
           .map {
             case Some((blockVersion, bytes)) =>
+              println(s"📤 [MAIN] Sending block ${sig} (version $blockVersion, ${bytes.length} bytes)")
               RawBytes(if (blockVersion < Block.ProtoBlockVersion) BlockSpec.messageCode else PBBlockSpec.messageCode, bytes)
-            case _ => throw new NoSuchElementException(s"Error loading block $sig")
+            case _ => 
+              println(s"❌ [MAIN] Block ${sig} not found in history!")
+              throw new NoSuchElementException(s"Error loading block $sig")
           }
       )
 
