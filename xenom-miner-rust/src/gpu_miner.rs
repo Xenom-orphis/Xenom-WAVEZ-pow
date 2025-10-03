@@ -181,49 +181,20 @@ impl GpuMiner {
 
         None
     }
-}
-
-#[cfg(not(feature = "cuda"))]
-#[allow(dead_code)]
-impl GpuMiner {
-    pub fn new(
-        _population_size: usize,
-        _mv_len: usize,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        Err("CUDA support not compiled. Build with --features cuda".into())
-    }
-
-    pub fn mine_with_ga(
-        &self,
-        _header_prefix: &[u8],
-        _target: &BigUint,
-        _generations: usize,
-        _mutation_rate: f32,
-    ) -> Option<(Vec<u8>, [u8; 32])> {
-        None
-    }
 
     /// GPU brute-force: generate random mutation vectors on host in batches,
-    /// hash and check on GPU, return first solution.
+    /// hash on GPU and check against target, returning the first solution.
     pub fn mine_bruteforce_gpu(
         &self,
         header_prefix: &[u8],
         target: &BigUint,
         batches: usize,
     ) -> Option<(Vec<u8>, [u8; 32])> {
-        if !self.has_kernels {
-            return None;
-        }
+        if !self.has_kernels { return None; }
 
         let module = "blake3_kernels";
-        let func_hash = match self.device.get_func(module, "blake3_hash_batch") {
-            Some(f) => f,
-            None => return None,
-        };
-        let func_fitness = match self.device.get_func(module, "evaluate_fitness") {
-            Some(f) => f,
-            None => return None,
-        };
+        let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
+        let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
 
         // Static device buffers reused across batches
         let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
@@ -232,12 +203,8 @@ impl GpuMiner {
         let pop_u32 = self.population_size as u32;
         let cfg = LaunchConfig::for_num_elems(pop_u32);
 
-        let mut d_population: CudaSlice<u8> = self
-            .device
-            .alloc_zeros(self.population_size * self.mv_len)
-            .ok()?;
-        let mut d_hashes: CudaSlice<u8> =
-            self.device.alloc_zeros(self.population_size * 32).ok()?;
+        let mut d_population: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * self.mv_len).ok()?;
+        let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
         // Prepare target bytes on device
@@ -262,28 +229,30 @@ impl GpuMiner {
             d_population = self.device.htod_copy(host_pop.clone()).ok()?;
 
             unsafe {
-                func_hash
-                    .launch(
-                        cfg,
-                        (
-                            &d_header,
-                            header_len_u32,
-                            &d_population,
-                            mv_len_u32,
-                            &mut d_hashes,
-                            pop_u32,
-                        ),
-                    )
-                    .ok()?;
-                func_fitness
-                    .launch(cfg, (&d_hashes, &d_target, &mut d_fitness, pop_u32))
-                    .ok()?;
+                func_hash.launch(
+                    cfg,
+                    (
+                        &d_header,
+                        header_len_u32,
+                        &d_population,
+                        mv_len_u32,
+                        &mut d_hashes,
+                        pop_u32,
+                    ),
+                ).ok()?;
+                func_fitness.launch(
+                    cfg,
+                    (
+                        &d_hashes,
+                        &d_target,
+                        &mut d_fitness,
+                        pop_u32,
+                    ),
+                ).ok()?;
             }
 
             // Pull fitness and check for solution
-            self.device
-                .dtoh_sync_copy_into(&d_fitness, &mut host_fitness)
-                .ok()?;
+            self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
             if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f >= 1.0) {
                 let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
                 let mut candidate = header_prefix.to_vec();
@@ -295,6 +264,36 @@ impl GpuMiner {
             }
         }
 
+        None
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
+#[allow(dead_code)]
+impl GpuMiner {
+    pub fn new(
+        _population_size: usize,
+        _mv_len: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Err("CUDA support not compiled. Build with --features cuda".into())
+    }
+
+    pub fn mine_with_ga(
+        &self,
+        _header_prefix: &[u8],
+        _target: &BigUint,
+        _generations: usize,
+        _mutation_rate: f32,
+    ) -> Option<(Vec<u8>, [u8; 32])> {
+        None
+    }
+
+    pub fn mine_bruteforce_gpu(
+        &self,
+        _header_prefix: &[u8],
+        _target: &BigUint,
+        _batches: usize,
+    ) -> Option<(Vec<u8>, [u8; 32])> {
         None
     }
 }
