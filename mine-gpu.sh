@@ -63,9 +63,9 @@ while true; do
         continue
     fi
     
-    # Parse template
-    HEADER_HEX=$(echo "$TEMPLATE" | grep -o '"headerPrefix":"[^"]*"' | cut -d'"' -f4)
-    DIFFICULTY=$(echo "$TEMPLATE" | grep -o '"difficulty":"[^"]*"' | cut -d'"' -f4)
+    # Parse template (API returns header_prefix_hex and difficulty_bits)
+    HEADER_HEX=$(echo "$TEMPLATE" | grep -o '"header_prefix_hex":"[^"]*"' | cut -d'"' -f4)
+    DIFFICULTY=$(echo "$TEMPLATE" | grep -o '"difficulty_bits":"[^"]*"' | cut -d'"' -f4)
     TIMESTAMP=$(echo "$TEMPLATE" | grep -o '"timestamp":[0-9]*' | cut -d':' -f2)
     
     if [ -z "$HEADER_HEX" ] || [ -z "$DIFFICULTY" ]; then
