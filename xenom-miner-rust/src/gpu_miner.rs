@@ -80,7 +80,7 @@ impl GpuMiner {
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
         // Random seeds
-        let mut h_seeds: Vec<u32> = (0..self.population_size).map(|_| rng.gen()).collect();
+        let h_seeds: Vec<u32> = (0..self.population_size).map(|_| rng.gen()).collect();
         let mut d_seeds = self.device.htod_copy(h_seeds).ok()?;
 
         // Target bytes (big-endian 32 bytes)
@@ -117,7 +117,6 @@ impl GpuMiner {
                 let digest = blake3::hash(&candidate);
                 let h_bytes = digest.as_bytes();
                 // Compare to target (big-endian)
-                let mut meets = true;
                 // Convert target once above; here compare BigUint directly for clarity
                 let h_big = BigUint::from_bytes_be(h_bytes);
                 if &h_big <= target {
@@ -193,9 +192,6 @@ impl GpuMiner {
         if !self.has_kernels { return None; }
 
         let module = "blake3_kernels";
-        let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
-        let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
-
         // Static device buffers reused across batches
         let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
         let header_len_u32 = header_prefix.len() as u32;
@@ -203,7 +199,6 @@ impl GpuMiner {
         let pop_u32 = self.population_size as u32;
         let cfg = LaunchConfig::for_num_elems(pop_u32);
 
-        let mut d_population: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * self.mv_len).ok()?;
         let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
@@ -226,9 +221,13 @@ impl GpuMiner {
         for _ in 0..batches {
             // Fill with random bytes
             rng.fill(&mut host_pop[..]);
-            d_population = self.device.htod_copy(host_pop.clone()).ok()?;
+            let mut d_population: CudaSlice<u8> = self.device.htod_copy(host_pop.clone()).ok()?;
 
             unsafe {
+                // Fetch kernels each iteration to avoid moving them across launches
+                let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
+                let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
+                
                 func_hash.launch(
                     cfg,
                     (
