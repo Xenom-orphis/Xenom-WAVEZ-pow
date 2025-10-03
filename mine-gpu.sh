@@ -36,6 +36,18 @@ if [ ! -f "$MINER_BIN" ]; then
     echo -e "${GREEN}✅ Build complete${NC}"
 fi
 
+# Optional: force rebuild each run to pick up latest changes
+if [ "${ALWAYS_REBUILD:-false}" = "true" ]; then
+    echo -e "${BLUE}Rebuilding miner (ALWAYS_REBUILD=true)...${NC}"
+    pushd xenom-miner-rust >/dev/null
+    if [ "$USE_GPU" = "true" ] && command -v nvcc &> /dev/null; then
+        cargo build --release --features cuda
+    else
+        cargo build --release
+    fi
+    popd >/dev/null
+fi
+
 echo -e "${BLUE}🚀 Xenom GPU Miner${NC}"
 echo "================================="
 echo "Node: $NODE_URL"
@@ -101,7 +113,18 @@ while true; do
     
     # Run miner and capture output
     MINER_OUTPUT=$($MINER_CMD 2>&1)
-    MINE_EXIT_CODE=$?
+    CMD_EXIT_CODE=$?
+
+    # Optionally show full miner output (set SHOW_MINER_OUTPUT=true)
+    if [ "${SHOW_MINER_OUTPUT:-false}" = "true" ]; then
+        echo "--- Miner output begin ---"
+        echo "$MINER_OUTPUT"
+        echo "--- Miner output end ---"
+    fi
+
+    # Surface computed target line for visibility if present
+    echo "$MINER_OUTPUT" | grep -m1 -E "Computed target \(hex, big-endian\):" || true
+    MINE_EXIT_CODE=$CMD_EXIT_CODE
     
     MINE_END=$(date +%s)
     MINE_DURATION=$((MINE_END - MINE_START))
