@@ -29,10 +29,10 @@ impl GpuMiner {
             // Module name must be unique per device
             let module_name = "blake3_kernels";
             // Ignore error if already loaded
-            let _ = device.load_ptx(ptx, module_name, &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"]);
-            has_kernels = device.get_func(module_name, "blake3_hash_batch").is_ok()
-                && device.get_func(module_name, "evaluate_fitness").is_ok()
-                && device.get_func(module_name, "genetic_operators").is_ok();
+            let _ = device.load_ptx(ptx.into(), module_name, &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"]);
+            has_kernels = device.get_func(module_name, "blake3_hash_batch").is_some()
+                && device.get_func(module_name, "evaluate_fitness").is_some()
+                && device.get_func(module_name, "genetic_operators").is_some();
         }
 
         Ok(Self { device, population_size, mv_len, has_kernels })
@@ -51,9 +51,9 @@ impl GpuMiner {
         }
 
         let module = "blake3_kernels";
-        let func_hash = self.device.get_func(module, "blake3_hash_batch").ok()?;
-        let func_fitness = self.device.get_func(module, "evaluate_fitness").ok()?;
-        let func_ga = self.device.get_func(module, "genetic_operators").ok()?;
+        let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
+        let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
+        let func_ga = match self.device.get_func(module, "genetic_operators") { Some(f) => f, None => return None };
 
         // Prepare buffers
         let pop = self.population_size as u32;
