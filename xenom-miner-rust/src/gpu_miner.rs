@@ -61,18 +61,18 @@ impl GpuMiner {
         let header_len_u32 = header_prefix.len() as u32;
 
         // Device buffers
-        let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix).ok()?;
+        let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
         let mut rng = rand::thread_rng();
         let mut h_population: Vec<u8> = vec![0u8; self.population_size * self.mv_len];
         rng.fill(&mut h_population[..]);
-        let mut d_population = self.device.htod_copy(&h_population).ok()?;
+        let mut d_population = self.device.htod_copy(h_population).ok()?;
         let mut d_population_next: CudaSlice<u8> = self.device.alloc_zeros(h_population.len()).ok()?;
         let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
         // Random seeds
         let mut h_seeds: Vec<u32> = (0..self.population_size).map(|_| rng.gen()).collect();
-        let mut d_seeds = self.device.htod_copy(&h_seeds).ok()?;
+        let mut d_seeds = self.device.htod_copy(h_seeds).ok()?;
 
         // Target bytes (big-endian 32 bytes)
         let mut target_bytes = target.to_bytes_be();
@@ -85,7 +85,7 @@ impl GpuMiner {
             let start = target_bytes.len() - 32;
             target_bytes = target_bytes[start..].to_vec();
         }
-        let d_target: CudaSlice<u8> = self.device.htod_copy(&target_bytes).ok()?;
+        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
 
         // Launch configuration
         let cfg = LaunchConfig::for_num_elems(self.population_size as u32);
