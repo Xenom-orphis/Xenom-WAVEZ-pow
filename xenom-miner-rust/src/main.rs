@@ -44,6 +44,14 @@ struct Args {
     #[arg(long, default_value_t = false)]
     gpu: bool,
 
+    /// GPU brute-force mode (hash-only, no GA)
+    #[arg(long, default_value_t = false)]
+    gpu_brute: bool,
+
+    /// Number of batches (GPU brute-force)
+    #[arg(long, default_value_t = 2000usize)]
+    batches: usize,
+
     /// GPU mutation rate (0.0-1.0)
     #[arg(long, default_value_t = 0.01)]
     mutation_rate: f32,
@@ -267,11 +275,17 @@ fn main() {
             println!("   Generations: {}", args.generations);
             println!("   Mutation rate: {}", args.mutation_rate);
             println!("   MV length: {}", args.mv_len);
+            println!("   Mode: {}", if args.gpu_brute { "brute-force" } else { "GA" });
             
             match gpu_miner::GpuMiner::new(args.population, args.mv_len) {
                 Ok(miner) => {
                     let start = Instant::now();
-                    match miner.mine_with_ga(&header_prefix, &target, args.generations, args.mutation_rate) {
+                    let res = if args.gpu_brute {
+                        miner.mine_bruteforce_gpu(&header_prefix, &target, args.batches)
+                    } else {
+                        miner.mine_with_ga(&header_prefix, &target, args.generations, args.mutation_rate)
+                    };
+                    match res {
                         Some((mv, hash)) => {
                             let elapsed = start.elapsed();
                             println!("\n✅ SOLUTION FOUND!");

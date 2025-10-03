@@ -82,56 +82,42 @@ impl GpuMiner {
             // Truncate to 32 (keep least significant 32 bytes)
             let start = target_bytes.len() - 32;
             target_bytes = target_bytes[start..].to_vec();
-        }
         let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
 
         // Launch configuration
         let cfg = LaunchConfig::for_num_elems(self.population_size as u32);
 
-        // Host buffer for reading back fitness
+        // Host buffers
         let mut h_fitness = vec![0f32; self.population_size];
 
-        for _gen in 0..generations {
-            // Fetch kernel functions each iteration to avoid moving them (CudaFunction is not Copy)
-            let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
-            let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
-            let func_ga = match self.device.get_func(module, "genetic_operators") { Some(f) => f, None => return None };
-            // 1) Hash header+mv for each individual
-            unsafe {
-                func_hash.launch(
-                    cfg,
-                    (
-                        &d_header,             // const uint8_t* header_prefix
-                        header_len_u32,        // uint32_t header_len
-                        &d_population,         // const uint8_t* mutation_vectors
-                        mv_len_u32,            // uint32_t mv_len
-                        &mut d_hashes,         // uint8_t* hashes
-                        pop,                   // uint32_t population_size
-                    ),
-                ).ok()?;
+        for gen in 0..generations {
+            // CPU hashing and fitness: ensure correctness for full header length
+            let mut h_population_now = vec![0u8; self.population_size * self.mv_len];
+            self.device.dtoh_sync_copy_into(&d_population, &mut h_population_now).ok()?;
+
+            let mut found_idx: Option<usize> = None;
+            for idx in 0..(self.population_size) {
+                let mv_slice = &h_population_now[idx * self.mv_len..(idx + 1) * self.mv_len];
+                let mut candidate = header_prefix.to_vec();
+                candidate.extend_from_slice(mv_slice);
+                let digest = blake3::hash(&candidate);
+                let h_bytes = digest.as_bytes();
+                // Compare to target (big-endian)
+                let mut meets = true;
+                // Convert target once above; here compare BigUint directly for clarity
+                let h_big = BigUint::from_bytes_be(h_bytes);
+                if &h_big <= target {
+                    found_idx = Some(idx);
+                    break;
+                }
+                // Fitness: inverse log distance in bits
+                let diff = if &h_big > target { &h_big - target } else { BigUint::from(0u32) };
+                let bits = diff.bits() as f32;
+                h_fitness[idx] = 1.0 / (1.0 + bits.ln());
             }
 
-            // 2) Evaluate fitness vs target
-            unsafe {
-                func_fitness.launch(
-                    cfg,
-                    (
-                        &d_hashes,             // const uint8_t* hashes
-                        &d_target,             // const uint8_t* target_bytes
-                        &mut d_fitness,        // float* fitness
-                        pop,                   // uint32_t population_size
-                    ),
-                ).ok()?;
-            }
-
-            // Read fitness to check if any solution found
-            self.device.dtoh_sync_copy_into(&d_fitness, &mut h_fitness).ok()?;
-            if let Some((idx, _)) = h_fitness.iter().enumerate().find(|(_, &f)| f >= 1.0) {
-                // Read back winning MV
-                let mut h_population_now = vec![0u8; self.population_size * self.mv_len];
-                self.device.dtoh_sync_copy_into(&d_population, &mut h_population_now).ok()?;
+            if let Some(idx) = found_idx {
                 let mv = h_population_now[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
-                // Recompute hash on CPU to return exact hash
                 let mut candidate = header_prefix.to_vec();
                 candidate.extend_from_slice(&mv);
                 let digest = blake3::hash(&candidate);
@@ -140,8 +126,12 @@ impl GpuMiner {
                 return Some((mv, out));
             }
 
-            // 3) GA operators -> produce next generation
+            // Copy fitness to device
+            d_fitness = self.device.htod_copy(h_fitness.clone()).ok()?;
+
+            // GA operators -> produce next generation on GPU
             unsafe {
+                let func_ga = match self.device.get_func(module, "genetic_operators") { Some(f) => f, None => return None };
                 func_ga.launch(
                     cfg,
                     (
@@ -156,12 +146,17 @@ impl GpuMiner {
                 ).ok()?;
             }
 
+            if gen % 50 == 0 {
+                // Simple progress: best fitness
+                let best = h_fitness.iter().cloned().fold(0.0f32, f32::max);
+                println!("GPU Hybrid gen={} best_fitness={:.6}", gen, best);
+            }
+
             // Swap populations
             std::mem::swap(&mut d_population, &mut d_population_next);
         }
 
         None
-    }
 }
 
 #[cfg(not(feature = "cuda"))]
@@ -178,6 +173,91 @@ impl GpuMiner {
         _generations: usize,
         _mutation_rate: f32,
     ) -> Option<(Vec<u8>, [u8; 32])> {
+        None
+    }
+
+    /// GPU brute-force: generate random mutation vectors on host in batches,
+    /// hash and check on GPU, return first solution.
+    pub fn mine_bruteforce_gpu(
+        &self,
+        header_prefix: &[u8],
+        target: &BigUint,
+        batches: usize,
+    ) -> Option<(Vec<u8>, [u8; 32])> {
+        if !self.has_kernels { return None; }
+
+        let module = "blake3_kernels";
+        let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
+        let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
+
+        // Static device buffers reused across batches
+        let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
+        let header_len_u32 = header_prefix.len() as u32;
+        let mv_len_u32 = self.mv_len as u32;
+        let pop_u32 = self.population_size as u32;
+        let cfg = LaunchConfig::for_num_elems(pop_u32);
+
+        let mut d_population: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * self.mv_len).ok()?;
+        let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
+        let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
+
+        // Prepare target bytes on device
+        let mut target_bytes = target.to_bytes_be();
+        if target_bytes.len() < 32 {
+            let mut pad = vec![0u8; 32 - target_bytes.len()];
+            pad.extend_from_slice(&target_bytes);
+            target_bytes = pad;
+        } else if target_bytes.len() > 32 {
+            let start = target_bytes.len() - 32;
+            target_bytes = target_bytes[start..].to_vec();
+        }
+        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
+
+        let mut rng = rand::thread_rng();
+        let mut host_pop = vec![0u8; self.population_size * self.mv_len];
+        let mut host_fitness = vec![0f32; self.population_size];
+
+        for _ in 0..batches {
+            // Fill with random bytes
+            rng.fill(&mut host_pop[..]);
+            d_population = self.device.htod_copy(host_pop.clone()).ok()?;
+
+            unsafe {
+                func_hash.launch(
+                    cfg,
+                    (
+                        &d_header,
+                        header_len_u32,
+                        &d_population,
+                        mv_len_u32,
+                        &mut d_hashes,
+                        pop_u32,
+                    ),
+                ).ok()?;
+                func_fitness.launch(
+                    cfg,
+                    (
+                        &d_hashes,
+                        &d_target,
+                        &mut d_fitness,
+                        pop_u32,
+                    ),
+                ).ok()?;
+            }
+
+            // Pull fitness and check for solution
+            self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
+            if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f >= 1.0) {
+                let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
+                let mut candidate = header_prefix.to_vec();
+                candidate.extend_from_slice(&mv);
+                let digest = blake3::hash(&candidate);
+                let mut out = [0u8; 32];
+                out.copy_from_slice(digest.as_bytes());
+                return Some((mv, out));
+            }
+        }
+
         None
     }
 }

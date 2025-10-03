@@ -12,6 +12,7 @@ POPULATION="${POPULATION:-8192}"
 GENERATIONS="${GENERATIONS:-1000}"
 MUTATION_RATE="${MUTATION_RATE:-0.01}"
 MV_LEN="${MV_LEN:-16}"
+BATCHES="${BATCHES:-5000}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -43,6 +44,8 @@ echo "Population: $POPULATION"
 echo "Generations: $GENERATIONS"
 echo "Mutation Rate: $MUTATION_RATE"
 echo "MV Length: $MV_LEN"
+echo "Mode: GPU brute-force"
+echo "Batches: $BATCHES"
 echo ""
 
 # Mining loop
@@ -90,7 +93,7 @@ while true; do
         --mv-len $MV_LEN"
     
     if [ "$USE_GPU" = "true" ]; then
-        MINER_CMD="$MINER_CMD --gpu --mutation-rate $MUTATION_RATE"
+        MINER_CMD="$MINER_CMD --gpu --gpu-brute --batches $BATCHES --mutation-rate $MUTATION_RATE"
     fi
     
     echo -e "${YELLOW}⛏️  Mining block...${NC}"
