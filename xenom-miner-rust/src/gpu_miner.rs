@@ -82,6 +82,7 @@ impl GpuMiner {
             // Truncate to 32 (keep least significant 32 bytes)
             let start = target_bytes.len() - 32;
             target_bytes = target_bytes[start..].to_vec();
+        }
         let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
 
         // Launch configuration
