@@ -225,7 +225,11 @@ fn run_ga(
             let mut child = vec![0u8; mv_len];
             let cross_point = rng.gen_range(0..mv_len);
             for i in 0..mv_len {
-                child[i] = if i < cross_point { parent[i] } else { parent2[i] };
+                child[i] = if i < cross_point {
+                    parent[i]
+                } else {
+                    parent2[i]
+                };
             }
             // 突然変異: ランダムなバイトを反転/置換
             if rng.gen_bool(0.02) {
@@ -275,15 +279,23 @@ fn main() {
             println!("   Generations: {}", args.generations);
             println!("   Mutation rate: {}", args.mutation_rate);
             println!("   MV length: {}", args.mv_len);
-            println!("   Mode: {}", if args.gpu_brute { "brute-force" } else { "GA" });
-            
+            println!(
+                "   Mode: {}",
+                if args.gpu_brute { "brute-force" } else { "GA" }
+            );
+
             match gpu_miner::GpuMiner::new(args.population, args.mv_len) {
                 Ok(miner) => {
                     let start = Instant::now();
                     let res = if args.gpu_brute {
                         miner.mine_bruteforce_gpu(&header_prefix, &target, args.batches)
                     } else {
-                        miner.mine_with_ga(&header_prefix, &target, args.generations, args.mutation_rate)
+                        miner.mine_with_ga(
+                            &header_prefix,
+                            &target,
+                            args.generations,
+                            args.mutation_rate,
+                        )
                     };
                     match res {
                         Some((mv, hash)) => {

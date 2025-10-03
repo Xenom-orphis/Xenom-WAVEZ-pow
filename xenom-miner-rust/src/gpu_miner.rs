@@ -1,9 +1,9 @@
 #[cfg(feature = "cuda")]
 use cudarc::driver::{CudaDevice, CudaSlice, LaunchAsync, LaunchConfig};
-#[cfg(feature = "cuda")]
-use std::sync::Arc;
 use num_bigint::BigUint;
 use rand::Rng;
+#[cfg(feature = "cuda")]
+use std::sync::Arc;
 
 #[allow(dead_code)]
 pub struct GpuMiner {
@@ -29,15 +29,24 @@ impl GpuMiner {
             // Module name must be unique per device
             let module_name = "blake3_kernels";
             // Ignore error if already loaded
-            let _ = device.load_ptx(ptx.into(), module_name, &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"]);
+            let _ = device.load_ptx(
+                ptx.into(),
+                module_name,
+                &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"],
+            );
             has_kernels = device.get_func(module_name, "blake3_hash_batch").is_some()
                 && device.get_func(module_name, "evaluate_fitness").is_some()
                 && device.get_func(module_name, "genetic_operators").is_some();
         }
 
-        Ok(Self { device, population_size, mv_len, has_kernels })
+        Ok(Self {
+            device,
+            population_size,
+            mv_len,
+            has_kernels,
+        })
     }
-    
+
     pub fn mine_with_ga(
         &self,
         header_prefix: &[u8],
@@ -64,8 +73,10 @@ impl GpuMiner {
         let mut h_population: Vec<u8> = vec![0u8; population_bytes];
         rng.fill(&mut h_population[..]);
         let mut d_population = self.device.htod_copy(h_population).ok()?;
-        let mut d_population_next: CudaSlice<u8> = self.device.alloc_zeros(population_bytes).ok()?;
-        let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
+        let mut d_population_next: CudaSlice<u8> =
+            self.device.alloc_zeros(population_bytes).ok()?;
+        let mut d_hashes: CudaSlice<u8> =
+            self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
         // Random seeds
@@ -94,7 +105,9 @@ impl GpuMiner {
         for gen in 0..generations {
             // CPU hashing and fitness: ensure correctness for full header length
             let mut h_population_now = vec![0u8; self.population_size * self.mv_len];
-            self.device.dtoh_sync_copy_into(&d_population, &mut h_population_now).ok()?;
+            self.device
+                .dtoh_sync_copy_into(&d_population, &mut h_population_now)
+                .ok()?;
 
             let mut found_idx: Option<usize> = None;
             for idx in 0..(self.population_size) {
@@ -112,7 +125,11 @@ impl GpuMiner {
                     break;
                 }
                 // Fitness: inverse log distance in bits
-                let diff = if &h_big > target { &h_big - target } else { BigUint::from(0u32) };
+                let diff = if &h_big > target {
+                    &h_big - target
+                } else {
+                    BigUint::from(0u32)
+                };
                 let bits = diff.bits() as f32;
                 h_fitness[idx] = 1.0 / (1.0 + bits.ln());
             }
@@ -132,19 +149,24 @@ impl GpuMiner {
 
             // GA operators -> produce next generation on GPU
             unsafe {
-                let func_ga = match self.device.get_func(module, "genetic_operators") { Some(f) => f, None => return None };
-                func_ga.launch(
-                    cfg,
-                    (
-                        &d_population,         // const uint8_t* population_current
-                        &d_fitness,            // const float* fitness
-                        &mut d_population_next,// uint8_t* population_next
-                        &mut d_seeds,          // uint32_t* random_seeds
-                        pop,                   // uint32_t population_size
-                        mv_len_u32,            // uint32_t mv_len
-                        mutation_rate,         // float mutation_rate
-                    ),
-                ).ok()?;
+                let func_ga = match self.device.get_func(module, "genetic_operators") {
+                    Some(f) => f,
+                    None => return None,
+                };
+                func_ga
+                    .launch(
+                        cfg,
+                        (
+                            &d_population,          // const uint8_t* population_current
+                            &d_fitness,             // const float* fitness
+                            &mut d_population_next, // uint8_t* population_next
+                            &mut d_seeds,           // uint32_t* random_seeds
+                            pop,                    // uint32_t population_size
+                            mv_len_u32,             // uint32_t mv_len
+                            mutation_rate,          // float mutation_rate
+                        ),
+                    )
+                    .ok()?;
             }
 
             if gen % 50 == 0 {
@@ -158,15 +180,19 @@ impl GpuMiner {
         }
 
         None
+    }
 }
 
 #[cfg(not(feature = "cuda"))]
 #[allow(dead_code)]
 impl GpuMiner {
-    pub fn new(_population_size: usize, _mv_len: usize) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(
+        _population_size: usize,
+        _mv_len: usize,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         Err("CUDA support not compiled. Build with --features cuda".into())
     }
-    
+
     pub fn mine_with_ga(
         &self,
         _header_prefix: &[u8],
@@ -177,7 +203,7 @@ impl GpuMiner {
         None
     }
 
-     /// GPU brute-force: generate random mutation vectors on host in batches,
+    /// GPU brute-force: generate random mutation vectors on host in batches,
     /// hash and check on GPU, return first solution.
     pub fn mine_bruteforce_gpu(
         &self,
@@ -185,11 +211,19 @@ impl GpuMiner {
         target: &BigUint,
         batches: usize,
     ) -> Option<(Vec<u8>, [u8; 32])> {
-        if !self.has_kernels { return None; }
+        if !self.has_kernels {
+            return None;
+        }
 
         let module = "blake3_kernels";
-        let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
-        let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
+        let func_hash = match self.device.get_func(module, "blake3_hash_batch") {
+            Some(f) => f,
+            None => return None,
+        };
+        let func_fitness = match self.device.get_func(module, "evaluate_fitness") {
+            Some(f) => f,
+            None => return None,
+        };
 
         // Static device buffers reused across batches
         let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
@@ -198,8 +232,12 @@ impl GpuMiner {
         let pop_u32 = self.population_size as u32;
         let cfg = LaunchConfig::for_num_elems(pop_u32);
 
-        let mut d_population: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * self.mv_len).ok()?;
-        let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
+        let mut d_population: CudaSlice<u8> = self
+            .device
+            .alloc_zeros(self.population_size * self.mv_len)
+            .ok()?;
+        let mut d_hashes: CudaSlice<u8> =
+            self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
         // Prepare target bytes on device
@@ -224,30 +262,28 @@ impl GpuMiner {
             d_population = self.device.htod_copy(host_pop.clone()).ok()?;
 
             unsafe {
-                func_hash.launch(
-                    cfg,
-                    (
-                        &d_header,
-                        header_len_u32,
-                        &d_population,
-                        mv_len_u32,
-                        &mut d_hashes,
-                        pop_u32,
-                    ),
-                ).ok()?;
-                func_fitness.launch(
-                    cfg,
-                    (
-                        &d_hashes,
-                        &d_target,
-                        &mut d_fitness,
-                        pop_u32,
-                    ),
-                ).ok()?;
+                func_hash
+                    .launch(
+                        cfg,
+                        (
+                            &d_header,
+                            header_len_u32,
+                            &d_population,
+                            mv_len_u32,
+                            &mut d_hashes,
+                            pop_u32,
+                        ),
+                    )
+                    .ok()?;
+                func_fitness
+                    .launch(cfg, (&d_hashes, &d_target, &mut d_fitness, pop_u32))
+                    .ok()?;
             }
 
             // Pull fitness and check for solution
-            self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
+            self.device
+                .dtoh_sync_copy_into(&d_fitness, &mut host_fitness)
+                .ok()?;
             if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f >= 1.0) {
                 let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
                 let mut candidate = header_prefix.to_vec();
@@ -273,7 +309,7 @@ pub fn cpu_ga_mine(
     mutation_rate: f32,
 ) -> Option<(Vec<u8>, [u8; 32])> {
     use blake3::Hasher;
-    
+
     // Individual: (mutation_vector, fitness)
     let mut population: Vec<(Vec<u8>, f32)> = (0..population_size)
         .map(|_| {
@@ -282,21 +318,21 @@ pub fn cpu_ga_mine(
             (mv, 0.0)
         })
         .collect();
-    
+
     let mut rng = rand::thread_rng();
     let mut best_fitness = 0.0f32;
-    
+
     for gen in 0..generations {
         // Evaluate fitness
         for (mv, fitness) in &mut population {
             let mut candidate = header_prefix.to_vec();
             candidate.extend_from_slice(mv);
-            
+
             let mut hasher = Hasher::new();
             hasher.update(&candidate);
             let hash = hasher.finalize();
             let hash_bytes = hash.as_bytes();
-            
+
             // Check if solution
             let hash_bigint = BigUint::from_bytes_be(hash_bytes);
             if &hash_bigint <= target {
@@ -305,61 +341,64 @@ pub fn cpu_ga_mine(
                 println!("✅ CPU GA Solution found at generation {}", gen);
                 return Some((mv.clone(), result));
             }
-            
+
             // Calculate fitness (inverse of distance)
             let diff = if &hash_bigint > target {
                 &hash_bigint - target
             } else {
                 BigUint::from(0u32)
             };
-            
+
             let bits = diff.bits() as f32;
             *fitness = 1.0 / (1.0 + bits.ln());
-            
+
             if *fitness > best_fitness {
                 best_fitness = *fitness;
             }
         }
-        
+
         if gen % 100 == 0 {
             println!("CPU Gen {}: best_fitness={:.6}", gen, best_fitness);
         }
-        
+
         // Create next generation
         let mut next_gen = Vec::with_capacity(population_size);
-        
+
         for _ in 0..population_size {
             // Tournament selection
             let parent1 = tournament_select(&population, &mut rng);
             let parent2 = tournament_select(&population, &mut rng);
-            
+
             // Crossover
             let crossover_point = rng.gen_range(0..mv_len);
             let mut child = vec![0u8; mv_len];
             child[..crossover_point].copy_from_slice(&parent1[..crossover_point]);
             child[crossover_point..].copy_from_slice(&parent2[crossover_point..]);
-            
+
             // Mutation
             for byte in &mut child {
                 if rng.gen::<f32>() < mutation_rate {
                     *byte = rng.gen();
                 }
             }
-            
+
             next_gen.push((child, 0.0));
         }
-        
+
         population = next_gen;
     }
-    
-    println!("❌ CPU GA: No solution found after {} generations", generations);
+
+    println!(
+        "❌ CPU GA: No solution found after {} generations",
+        generations
+    );
     None
 }
 
 fn tournament_select<'a>(population: &'a [(Vec<u8>, f32)], rng: &mut impl Rng) -> &'a Vec<u8> {
     let idx1 = rng.gen_range(0..population.len());
     let idx2 = rng.gen_range(0..population.len());
-    
+
     if population[idx1].1 > population[idx2].1 {
         &population[idx1].0
     } else {
