@@ -62,9 +62,13 @@ fn hex_to_bytes(s: &str) -> Vec<u8> {
 }
 
 fn compact_bits_to_target(bits: u32) -> num_bigint::BigUint {
-    // Scala 実装と同様: bits = (exp << 24) | coeff(3 バイト)
+    // bits = (exp << 24) | coeff(3 bytes). Some nodes may emit coeff=0; guard against it.
     let exponent = (bits >> 24) as i32;
-    let coefficient = bits & 0x00ffffff;
+    let mut coefficient = bits & 0x00ffffff;
+    if coefficient == 0 {
+        // Fallback to a sane coefficient (Bitcoin-style)
+        coefficient = 0x00ffff;
+    }
     let coeff = num_bigint::BigUint::from(coefficient as u64);
     let base = num_bigint::BigUint::from(256u32);
     if exponent - 3 >= 0 {
@@ -270,6 +274,12 @@ fn main() {
 
     let bits_u32 = parse_bits_hex(&args.bits_hex);
     let target = compact_bits_to_target(bits_u32);
+    {
+        // Log computed target for visibility
+        let t_bytes = target.to_bytes_be();
+        let hex_str = if t_bytes.is_empty() { String::from("00") } else { hex::encode(&t_bytes) };
+        println!("Computed target (hex, big-endian): {}", hex_str);
+    }
 
     if args.gpu {
         #[cfg(feature = "cuda")]
