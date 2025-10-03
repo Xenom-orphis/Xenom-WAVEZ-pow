@@ -51,9 +51,6 @@ impl GpuMiner {
         }
 
         let module = "blake3_kernels";
-        let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
-        let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
-        let func_ga = match self.device.get_func(module, "genetic_operators") { Some(f) => f, None => return None };
 
         // Prepare buffers
         let pop = self.population_size as u32;
@@ -63,10 +60,11 @@ impl GpuMiner {
         // Device buffers
         let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
         let mut rng = rand::thread_rng();
-        let mut h_population: Vec<u8> = vec![0u8; self.population_size * self.mv_len];
+        let population_bytes = self.population_size * self.mv_len;
+        let mut h_population: Vec<u8> = vec![0u8; population_bytes];
         rng.fill(&mut h_population[..]);
         let mut d_population = self.device.htod_copy(h_population).ok()?;
-        let mut d_population_next: CudaSlice<u8> = self.device.alloc_zeros(h_population.len()).ok()?;
+        let mut d_population_next: CudaSlice<u8> = self.device.alloc_zeros(population_bytes).ok()?;
         let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
 
@@ -94,6 +92,10 @@ impl GpuMiner {
         let mut h_fitness = vec![0f32; self.population_size];
 
         for _gen in 0..generations {
+            // Fetch kernel functions each iteration to avoid moving them (CudaFunction is not Copy)
+            let func_hash = match self.device.get_func(module, "blake3_hash_batch") { Some(f) => f, None => return None };
+            let func_fitness = match self.device.get_func(module, "evaluate_fitness") { Some(f) => f, None => return None };
+            let func_ga = match self.device.get_func(module, "genetic_operators") { Some(f) => f, None => return None };
             // 1) Hash header+mv for each individual
             unsafe {
                 func_hash.launch(
