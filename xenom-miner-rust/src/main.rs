@@ -6,6 +6,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Instant;
 
+mod gpu_miner;
+
 /// Rust で実装された最適化マイナー。並列 GA（CPU）に対応し、GPU/OpenCL 統合用のフックを備える
 #[derive(Parser, Debug)]
 #[command(author, version, about = "Xenom optimized miner (Rust) - BLAKE3 + GA", long_about = None)]
@@ -37,6 +39,14 @@ struct Args {
     /// GA を使わず CPU ブルートフォースのみ
     #[arg(long, default_value_t = false)]
     brute: bool,
+
+    /// GPU (CUDA) を使用して GA を実行
+    #[arg(long, default_value_t = false)]
+    gpu: bool,
+
+    /// GPU mutation rate (0.0-1.0)
+    #[arg(long, default_value_t = 0.01)]
+    mutation_rate: f32,
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
@@ -249,7 +259,83 @@ fn main() {
     let bits_u32 = parse_bits_hex(&args.bits_hex);
     let target = compact_bits_to_target(bits_u32);
 
-    if args.brute {
+    if args.gpu {
+        #[cfg(feature = "cuda")]
+        {
+            println!("🚀 GPU (CUDA) mode enabled");
+            println!("   Population: {}", args.population);
+            println!("   Generations: {}", args.generations);
+            println!("   Mutation rate: {}", args.mutation_rate);
+            println!("   MV length: {}", args.mv_len);
+            
+            match gpu_miner::GpuMiner::new(args.population, args.mv_len) {
+                Ok(miner) => {
+                    let start = Instant::now();
+                    match miner.mine_with_ga(&header_prefix, &target, args.generations, args.mutation_rate) {
+                        Some((mv, hash)) => {
+                            let elapsed = start.elapsed();
+                            println!("\n✅ SOLUTION FOUND!");
+                            println!("   Mutation vector: {}", hex::encode(&mv));
+                            println!("   Hash: {}", hex::encode(&hash));
+                            println!("   Time: {:?}", elapsed);
+                        }
+                        None => {
+                            println!("\n❌ No solution found");
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ GPU initialization failed: {}", e);
+                    eprintln!("   Falling back to CPU GA...");
+                    let start = Instant::now();
+                    match gpu_miner::cpu_ga_mine(
+                        &header_prefix,
+                        &target,
+                        args.population,
+                        args.mv_len,
+                        args.generations,
+                        args.mutation_rate,
+                    ) {
+                        Some((mv, hash)) => {
+                            let elapsed = start.elapsed();
+                            println!("\n✅ CPU SOLUTION FOUND!");
+                            println!("   Mutation vector: {}", hex::encode(&mv));
+                            println!("   Hash: {}", hex::encode(&hash));
+                            println!("   Time: {:?}", elapsed);
+                        }
+                        None => {
+                            println!("\n❌ No solution found");
+                        }
+                    }
+                }
+            }
+        }
+        #[cfg(not(feature = "cuda"))]
+        {
+            eprintln!("❌ CUDA support not compiled. Rebuild with --features cuda");
+            eprintln!("   Falling back to CPU GA...");
+            let start = Instant::now();
+            match gpu_miner::cpu_ga_mine(
+                &header_prefix,
+                &target,
+                args.population,
+                args.mv_len,
+                args.generations,
+                args.mutation_rate,
+            ) {
+                Some((mv, hash)) => {
+                    let elapsed = start.elapsed();
+                    println!("\n✅ CPU SOLUTION FOUND!");
+                    println!("   Mutation vector: {}", hex::encode(&mv));
+                    println!("   Hash: {}", hex::encode(&hash));
+                    println!("   Time: {:?}", elapsed);
+                }
+                None => {
+                    println!("\n❌ No solution found");
+                }
+            }
+        }
+    } else if args.brute {
         run_bruteforce(header_prefix, &target, args.mv_len);
     } else {
         run_ga(
@@ -261,7 +347,7 @@ fn main() {
         );
     }
 
-    println!("done");
+    println!("\n✅ Mining completed");
 }
 
 // メモ: GPU 連携
