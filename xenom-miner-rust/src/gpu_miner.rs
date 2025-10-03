@@ -177,7 +177,7 @@ impl GpuMiner {
         None
     }
 
-    /// GPU brute-force: generate random mutation vectors on host in batches,
+     /// GPU brute-force: generate random mutation vectors on host in batches,
     /// hash and check on GPU, return first solution.
     pub fn mine_bruteforce_gpu(
         &self,
