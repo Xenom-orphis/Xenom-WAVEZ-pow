@@ -11,6 +11,8 @@ pub struct GpuMiner {
     device: Arc<CudaDevice>,
     population_size: usize,
     mv_len: usize,
+    #[cfg(feature = "cuda")]
+    has_kernels: bool,
 }
 
 #[cfg(feature = "cuda")]
@@ -18,26 +20,144 @@ impl GpuMiner {
     pub fn new(population_size: usize, mv_len: usize) -> Result<Self, Box<dyn std::error::Error>> {
         // Initialize CUDA device
         let device = CudaDevice::new(0)?;
-        
-        Ok(Self {
-            device,
-            population_size,
-            mv_len,
-        })
+
+        // Try to load compiled PTX from env (set by build.rs)
+        let mut has_kernels = false;
+        if let Ok(ptx_path) = std::env::var("CUDA_BLAKE3_PTX") {
+            let ptx = std::fs::read_to_string(&ptx_path)?;
+            // Load module with our three kernels
+            // Module name must be unique per device
+            let module_name = "blake3_kernels";
+            // Ignore error if already loaded
+            let _ = device.load_ptx(ptx, module_name, &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"]);
+            has_kernels = device.get_func(module_name, "blake3_hash_batch").is_ok()
+                && device.get_func(module_name, "evaluate_fitness").is_ok()
+                && device.get_func(module_name, "genetic_operators").is_ok();
+        }
+
+        Ok(Self { device, population_size, mv_len, has_kernels })
     }
     
     pub fn mine_with_ga(
         &self,
-        _header_prefix: &[u8],
-        _target: &BigUint,
-        _generations: usize,
-        _mutation_rate: f32,
+        header_prefix: &[u8],
+        target: &BigUint,
+        generations: usize,
+        mutation_rate: f32,
     ) -> Option<(Vec<u8>, [u8; 32])> {
-        // TODO: Full CUDA kernel integration requires proper PTX loading
-        // For now, this is a placeholder. Use CPU fallback (cpu_ga_mine) instead.
-        println!("⚠️  GPU mining not yet fully integrated with cudarc.");
-        println!("   The CUDA kernels (blake3.cu) are ready but need PTX loading.");
-        println!("   Please use CPU fallback for now.");
+        if !self.has_kernels {
+            eprintln!("⚠️  CUDA kernels not loaded (missing PTX). Falling back to None.");
+            return None;
+        }
+
+        let module = "blake3_kernels";
+        let func_hash = self.device.get_func(module, "blake3_hash_batch").ok()?;
+        let func_fitness = self.device.get_func(module, "evaluate_fitness").ok()?;
+        let func_ga = self.device.get_func(module, "genetic_operators").ok()?;
+
+        // Prepare buffers
+        let pop = self.population_size as u32;
+        let mv_len_u32 = self.mv_len as u32;
+        let header_len_u32 = header_prefix.len() as u32;
+
+        // Device buffers
+        let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix).ok()?;
+        let mut rng = rand::thread_rng();
+        let mut h_population: Vec<u8> = vec![0u8; self.population_size * self.mv_len];
+        rng.fill(&mut h_population[..]);
+        let mut d_population = self.device.htod_copy(&h_population).ok()?;
+        let mut d_population_next: CudaSlice<u8> = self.device.alloc_zeros(h_population.len()).ok()?;
+        let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
+        let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
+
+        // Random seeds
+        let mut h_seeds: Vec<u32> = (0..self.population_size).map(|_| rng.gen()).collect();
+        let mut d_seeds = self.device.htod_copy(&h_seeds).ok()?;
+
+        // Target bytes (big-endian 32 bytes)
+        let mut target_bytes = target.to_bytes_be();
+        if target_bytes.len() < 32 {
+            let mut pad = vec![0u8; 32 - target_bytes.len()];
+            pad.extend_from_slice(&target_bytes);
+            target_bytes = pad;
+        } else if target_bytes.len() > 32 {
+            // Truncate to 32 (keep least significant 32 bytes)
+            let start = target_bytes.len() - 32;
+            target_bytes = target_bytes[start..].to_vec();
+        }
+        let d_target: CudaSlice<u8> = self.device.htod_copy(&target_bytes).ok()?;
+
+        // Launch configuration
+        let cfg = LaunchConfig::for_num_elems(self.population_size as u32);
+
+        // Host buffer for reading back fitness
+        let mut h_fitness = vec![0f32; self.population_size];
+
+        for _gen in 0..generations {
+            // 1) Hash header+mv for each individual
+            unsafe {
+                func_hash.launch(
+                    cfg,
+                    (
+                        &d_header,             // const uint8_t* header_prefix
+                        header_len_u32,        // uint32_t header_len
+                        &d_population,         // const uint8_t* mutation_vectors
+                        mv_len_u32,            // uint32_t mv_len
+                        &mut d_hashes,         // uint8_t* hashes
+                        pop,                   // uint32_t population_size
+                    ),
+                ).ok()?;
+            }
+
+            // 2) Evaluate fitness vs target
+            unsafe {
+                func_fitness.launch(
+                    cfg,
+                    (
+                        &d_hashes,             // const uint8_t* hashes
+                        &d_target,             // const uint8_t* target_bytes
+                        &mut d_fitness,        // float* fitness
+                        pop,                   // uint32_t population_size
+                    ),
+                ).ok()?;
+            }
+
+            // Read fitness to check if any solution found
+            self.device.dtoh_sync_copy_into(&d_fitness, &mut h_fitness).ok()?;
+            if let Some((idx, _)) = h_fitness.iter().enumerate().find(|(_, &f)| f >= 1.0) {
+                // Read back winning MV
+                let mut h_population_now = vec![0u8; self.population_size * self.mv_len];
+                self.device.dtoh_sync_copy_into(&d_population, &mut h_population_now).ok()?;
+                let mv = h_population_now[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
+                // Recompute hash on CPU to return exact hash
+                let mut candidate = header_prefix.to_vec();
+                candidate.extend_from_slice(&mv);
+                let digest = blake3::hash(&candidate);
+                let mut out = [0u8; 32];
+                out.copy_from_slice(digest.as_bytes());
+                return Some((mv, out));
+            }
+
+            // 3) GA operators -> produce next generation
+            unsafe {
+                func_ga.launch(
+                    cfg,
+                    (
+                        &d_population,         // const uint8_t* population_current
+                        &d_fitness,            // const float* fitness
+                        &mut d_population_next,// uint8_t* population_next
+                        &mut d_seeds,          // uint32_t* random_seeds
+                        pop,                   // uint32_t population_size
+                        mv_len_u32,            // uint32_t mv_len
+                        mutation_rate,         // float mutation_rate
+                    ),
+                ).ok()?;
+            }
+
+            // Swap populations
+            std::mem::swap(&mut d_population, &mut d_population_next);
+        }
+
         None
     }
 }

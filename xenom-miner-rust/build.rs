@@ -40,6 +40,8 @@ fn main() {
             );
         }
         
+        // Export PTX path so the binary can load it at runtime
+        println!("cargo:rustc-env=CUDA_BLAKE3_PTX={}", ptx_file.display());
         println!("cargo:warning=CUDA kernel compiled successfully to {}", ptx_file.display());
     }
     

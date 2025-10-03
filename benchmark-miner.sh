@@ -53,13 +53,13 @@ run_benchmark() {
         
         END=$(date +%s%N)
         DURATION=$(( (END - START) / 1000000 ))  # Convert to milliseconds
-        DURATION_SEC=$(echo "scale=2; $DURATION / 1000" | bc)
+        DURATION_SEC=$(awk "BEGIN { printf \"%.2f\", $DURATION/1000 }")
         
         echo "${DURATION_SEC}s"
-        TOTAL_TIME=$(echo "$TOTAL_TIME + $DURATION_SEC" | bc)
+        TOTAL_TIME=$(awk "BEGIN { printf \"%.2f\", $TOTAL_TIME + $DURATION_SEC }")
     done
     
-    AVG_TIME=$(echo "scale=2; $TOTAL_TIME / $RUNS" | bc)
+    AVG_TIME=$(awk "BEGIN { printf \"%.2f\", $TOTAL_TIME / $RUNS }")
     echo ""
     echo "  Average time: ${AVG_TIME}s"
     echo ""
