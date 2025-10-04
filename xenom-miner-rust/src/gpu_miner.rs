@@ -275,13 +275,19 @@ impl GpuMiner {
             let start = target_bytes.len() - 32;
             target_bytes = target_bytes[start..].to_vec();
         }
-        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
+        
+        // Debug: Show target being used
+        eprintln!("🎯 GPU Target (first 8 bytes): {:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            target_bytes[0], target_bytes[1], target_bytes[2], target_bytes[3],
+            target_bytes[4], target_bytes[5], target_bytes[6], target_bytes[7]);
+        
+        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes.clone()).ok()?;
 
         let mut rng = rand::thread_rng();
         let mut host_pop = vec![0u8; self.population_size * self.mv_len];
         let mut host_fitness = vec![0f32; self.population_size];
 
-        for _ in 0..batches {
+        for batch_idx in 0..batches {
             // Fill with random bytes
             rng.fill(&mut host_pop[..]);
             let d_population: CudaSlice<u8> = self.device.htod_copy(host_pop.clone()).ok()?;
@@ -315,14 +321,32 @@ impl GpuMiner {
 
             // Pull fitness and check for solution (fitness == 999999.0 means hash meets target)
             self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
-            if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f > 100000.0) {
+            
+            // Debug: Show max fitness every 1000 batches
+            if batch_idx > 0 && batch_idx % 1000 == 0 {
+                let max_fitness = host_fitness.iter().fold(0.0f32, |a, &b| a.max(b));
+                eprintln!("Debug: Batch {}/{}, Max fitness = {:.6}", batch_idx, batches, max_fitness);
+            }
+            
+            if let Some((idx, &fitness)) = host_fitness.iter().enumerate().find(|(_, &f)| f > 100000.0) {
+                eprintln!("🎯 Solution found! Fitness = {}, idx = {}", fitness, idx);
                 let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
                 let mut candidate = header_prefix.to_vec();
                 candidate.extend_from_slice(&mv);
                 let digest = blake3::hash(&candidate);
                 let mut out = [0u8; 32];
                 out.copy_from_slice(digest.as_bytes());
-                return Some((mv, out));
+                
+                // Verify hash meets target on CPU side
+                let hash_uint = num_bigint::BigUint::from_bytes_be(&out);
+                if hash_uint <= *target {
+                    eprintln!("✅ CPU verification passed");
+                    return Some((mv, out));
+                } else {
+                    eprintln!("❌ CPU verification FAILED - GPU signaled solution but hash doesn't meet target!");
+                    eprintln!("   Hash: {}", hex::encode(&out));
+                    eprintln!("   Target: {}", hex::encode(&target.to_bytes_be()));
+                }
             }
         }
 
