@@ -10,8 +10,7 @@ NODE_URL="${NODE_URL:-http://eu.losmuchachos.digital:36669}"
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 USE_GPU="${USE_GPU:-true}"
 MV_LEN="${MV_LEN:-16}"  # Same as mine.sh
-POPULATION="${POPULATION:-16384}"
-BATCHES="${BATCHES:-10000}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -90,20 +89,18 @@ while true; do
     echo "Difficulty: 0x$DIFFICULTY"
     
     # GPU brute-force mode
-    RESULT=$($MINER_BIN \
-        --header-hex "$HEADER" \
+    MINER_CMD="$MINER_BIN \
+        --header-hex $HEADER_HEX \
         --bits-hex $DIFFICULTY \
+        --mv-len $MV_LEN \
         --gpu \
-        --population "$POPULATION" \
-        --batches "$BATCHES" \
-        --mv-len "$MV_LEN" \
-        2>&1)
+        --gpu-brute"
     
     MINE_START=$(date +%s)
     
     # Run miner and capture output
-    MINER_OUTPUT=$RESULT
-
+    MINER_OUTPUT=$($MINER_CMD 2>&1)
+    CMD_EXIT_CODE=$?
     
     if echo "$MINER_OUTPUT" | grep -q "FOUND"; then
         MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
