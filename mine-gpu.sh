@@ -96,7 +96,8 @@ while true; do
         --gpu \
         --population "$POPULATION" \
         --batches "$BATCHES" \
-        --mv-len 16  2>&1)
+        --mv-len "$MV_LEN" \
+        2>&1)
     
     MINE_START=$(date +%s)
     
