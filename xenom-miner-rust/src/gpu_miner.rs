@@ -322,7 +322,29 @@ impl GpuMiner {
             // Pull fitness and check for solution (fitness == 999999.0 means hash meets target)
             self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
             
-            // Debug: Show max fitness every 1000 batches
+            // Debug: Show max fitness every 1000 batches AND first 3 hashes on first batch
+            if batch_idx == 0 {
+                // Pull hashes from GPU for inspection
+                let mut host_hashes = vec![0u8; 3 * 32]; // First 3 hashes
+                self.device.dtoh_sync_copy_into(&d_hashes, &mut host_hashes).ok()?;
+                
+                eprintln!("🔍 First 3 GPU hashes:");
+                for i in 0..3 {
+                    let hash = &host_hashes[i*32..(i+1)*32];
+                    eprintln!("  Hash {}: {}", i, hex::encode(hash));
+                }
+                
+                // Verify against CPU
+                eprintln!("🔍 Verifying against CPU Blake3:");
+                for i in 0..3 {
+                    let mv = &host_pop[i * self.mv_len..(i + 1) * self.mv_len];
+                    let mut candidate = header_prefix.to_vec();
+                    candidate.extend_from_slice(mv);
+                    let cpu_hash = blake3::hash(&candidate);
+                    eprintln!("  CPU Hash {}: {}", i, hex::encode(cpu_hash.as_bytes()));
+                }
+            }
+            
             if batch_idx > 0 && batch_idx % 1000 == 0 {
                 let max_fitness = host_fitness.iter().fold(0.0f32, |a, &b| a.max(b));
                 eprintln!("Debug: Batch {}/{}, Max fitness = {:.6}", batch_idx, batches, max_fitness);
