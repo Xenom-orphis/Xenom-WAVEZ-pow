@@ -6,6 +6,7 @@ MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 POPULATION="${POPULATION:-16384}"  # Larger population for better GPU utilization
 BATCHES="${BATCHES:-10000}"  # More batches per attempt
 MV_LEN="${MV_LEN:-16}"
+MULTI_GPU="${MULTI_GPU:-true}"  # Use all GPUs by default
 
 # Check if miner exists
 if [ ! -f "$MINER_BIN" ]; then
@@ -17,11 +18,14 @@ fi
 
 echo "🚀 Starting Rust-native GPU mining loop"
 echo "   Node: $NODE_URL"
-echo "   Population: $POPULATION"
+echo "   Population per GPU: $POPULATION"
 echo "   Batches: $BATCHES"
+echo "   Multi-GPU: $MULTI_GPU"
 echo ""
 
 # Run the miner in loop mode - all logic happens in Rust
+# MULTI_GPU=true will auto-detect and use all available GPUs
+export MULTI_GPU
 exec "$MINER_BIN" \
     --mine-loop \
     --node-url "$NODE_URL" \

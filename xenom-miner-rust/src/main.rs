@@ -279,27 +279,54 @@ fn run_ga(
 
 fn mine_loop(args: &Args) {
     use node_client::NodeClient;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
     
     let client = NodeClient::new(args.node_url.clone());
-    println!("🔄 Starting continuous mining loop");
-    println!("   Node: {}", args.node_url);
-    println!("   GPU: {}", args.gpu);
-    println!("   GPU Brute-force: {}", args.gpu_brute);
-    println!("   Batches: {}", args.batches);
-    println!("");
     
     #[cfg(feature = "cuda")]
-    let gpu_miner = if args.gpu {
-        match gpu_miner::GpuMiner::new(args.population, args.mv_len, args.gpu_id) {
-            Ok(miner) => Some(miner),
-            Err(e) => {
-                eprintln!("❌ Failed to initialize GPU miner: {}", e);
-                None
+    let gpu_miners: Vec<gpu_miner::GpuMiner> = if args.gpu {
+        // Auto-detect number of GPUs or use single GPU
+        let num_gpus = if args.gpu_id == 0 && std::env::var("MULTI_GPU").is_ok() {
+            // Try to detect all GPUs
+            (0..8).filter_map(|id| {
+                gpu_miner::GpuMiner::new(args.population, args.mv_len, id).ok()
+            }).collect()
+        } else {
+            // Use specified GPU only
+            match gpu_miner::GpuMiner::new(args.population, args.mv_len, args.gpu_id) {
+                Ok(miner) => vec![miner],
+                Err(e) => {
+                    eprintln!("❌ Failed to initialize GPU {}: {}", args.gpu_id, e);
+                    vec![]
+                }
             }
+        };
+        
+        if gpu_miners.is_empty() {
+            eprintln!("❌ No GPUs available");
+            return;
         }
+        
+        println!("🔄 Starting continuous mining loop");
+        println!("   Node: {}", args.node_url);
+        println!("   GPUs: {} device(s)", gpu_miners.len());
+        println!("   GPU Brute-force: {}", args.gpu_brute);
+        println!("   Batches: {}", args.batches);
+        println!("   Population per GPU: {}", args.population);
+        println!("");
+        
+        gpu_miners
     } else {
-        None
+        println!("❌ --gpu flag required for mining loop");
+        return;
     };
+    
+    #[cfg(not(feature = "cuda"))]
+    {
+        eprintln!("❌ CUDA support not compiled");
+        return;
+    }
     
     loop {
         // Fetch template from node
@@ -333,28 +360,52 @@ fn mine_loop(args: &Args) {
             compact_bits_to_target(bits_u32)
         };
         
-        println!("⛏️  Mining block {}...", template.height);
+        println!("⛏️  Mining block {} on {} GPU(s)...", template.height, gpu_miners.len());
         let start = Instant::now();
         
-        // Mine with GPU
+        // Mine with all GPUs in parallel using threads
         #[cfg(feature = "cuda")]
-        let result = if let Some(ref miner) = gpu_miner {
-            if args.gpu_brute {
-                miner.mine_bruteforce_gpu(&header_prefix, &target, args.batches)
-            } else {
-                miner.mine_with_ga(&header_prefix, &target, args.generations, args.mutation_rate)
-            }
-        } else {
-            None
+        let result = {
+            use std::sync::Mutex;
+            let found = Arc::new(AtomicBool::new(false));
+            let solution = Arc::new(Mutex::new(None));
+            let header_arc = Arc::new(header_prefix.clone());
+            let target_arc = Arc::new(target.clone());
+            
+            std::thread::scope(|s| {
+                for (gpu_id, miner) in gpu_miners.iter().enumerate() {
+                    let found = Arc::clone(&found);
+                    let solution = Arc::clone(&solution);
+                    let header = Arc::clone(&header_arc);
+                    let target = Arc::clone(&target_arc);
+                    
+                    s.spawn(move || {
+                        let res = if args.gpu_brute {
+                            miner.mine_bruteforce_gpu(&header, &target, args.batches)
+                        } else {
+                            miner.mine_with_ga(&header, &target, args.generations, args.mutation_rate)
+                        };
+                        
+                        if let Some((mv, hash)) = res {
+                            if !found.swap(true, Ordering::SeqCst) {
+                                // First GPU to find solution
+                                *solution.lock().unwrap() = Some((mv, hash, gpu_id));
+                            }
+                        }
+                    });
+                }
+            });
+            
+            solution.lock().unwrap().take()
         };
         
         #[cfg(not(feature = "cuda"))]
-        let result: Option<(Vec<u8>, [u8; 32])> = None;
+        let result: Option<(Vec<u8>, [u8; 32], usize)> = None;
         
         match result {
-            Some((mv, hash)) => {
+            Some((mv, hash, gpu_id)) => {
                 let elapsed = start.elapsed();
-                println!("✅ SOLUTION FOUND in {:.2}s!", elapsed.as_secs_f64());
+                println!("✅ SOLUTION FOUND by GPU {} in {:.2}s!", gpu_id, elapsed.as_secs_f64());
                 println!("   MV: {}", hex::encode(&mv));
                 println!("   Hash: {}", hex::encode(&hash));
                 
