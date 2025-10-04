@@ -19,9 +19,12 @@ if [ -z "$ARCH" ]; then
         GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader | head -n1)
         echo "🎮 Detected GPU: $GPU_NAME"
         
-        # Common mappings (use lowest common denominator for compatibility)
+        # Common mappings (use appropriate compute capability)
         case "$GPU_NAME" in
-            *"RTX 40"*|*"RTX 4"*|*"H100"*|*"L40"*)
+            *"RTX 50"*|*"RTX 5"*|*"B100"*|*"B200"*)
+                ARCH="sm_90"  # Blackwell (RTX 50 series)
+                ;;
+            *"RTX 40"*|*"RTX 4"*|*"H100"*|*"H200"*|*"L40"*)
                 ARCH="sm_89"  # Ada Lovelace / Hopper
                 ;;
             *"RTX 30"*|*"RTX 3"*|*"A100"*|*"A40"*|*"A30"*|*"A10"*)
@@ -34,16 +37,16 @@ if [ -z "$ARCH" ]; then
                 ARCH="sm_61"  # Pascal
                 ;;
             *)
-                # Default to sm_50 (Maxwell) for broad compatibility
-                ARCH="sm_50"
-                echo "⚠️  Unknown GPU, using sm_50 for compatibility"
+                # Default to sm_75 (Turing/Volta) for broad modern compatibility
+                ARCH="sm_75"
+                echo "⚠️  Unknown GPU, using sm_75 for compatibility"
                 ;;
         esac
         echo "📊 Using compute capability: $ARCH"
     else
-        # Default to sm_50 for broad compatibility
-        ARCH="sm_50"
-        echo "⚠️  nvidia-smi not found, using sm_50 for compatibility"
+        # Default to sm_75 (Turing/Volta) for broad modern compatibility
+        ARCH="sm_75"
+        echo "⚠️  nvidia-smi not found, using sm_75 for compatibility"
     fi
 fi
 

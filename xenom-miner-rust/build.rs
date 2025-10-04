@@ -19,8 +19,8 @@ fn main() {
         println!("cargo:warning=Compiling CUDA kernel with nvcc at {:?}...", nvcc);
 
         // Compile CUDA to PTX
-        // Determine compute capability (use sm_50 as safe default)
-        let arch = std::env::var("CUDA_ARCH").unwrap_or_else(|_| "sm_50".to_string());
+        // Determine compute capability (use sm_75 as modern default for Turing/Volta+)
+        let arch = std::env::var("CUDA_ARCH").unwrap_or_else(|_| "sm_75".to_string());
         println!("cargo:warning=Using CUDA compute capability: {}", arch);
         
         let output = std::process::Command::new("nvcc")
@@ -38,7 +38,7 @@ fn main() {
 
         if !output.status.success() {
             panic!(
-                "nvcc failed:\nstdout: {}\nstderr: {}\nTry setting CUDA_ARCH environment variable (e.g., CUDA_ARCH=sm_75)",
+                "nvcc failed:\nstdout: {}\nstderr: {}\n\nTry setting CUDA_ARCH environment variable:\n  RTX 50 series: CUDA_ARCH=sm_90\n  RTX 40 series: CUDA_ARCH=sm_89\n  RTX 30 series: CUDA_ARCH=sm_86\n  RTX 20 series: CUDA_ARCH=sm_75",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
