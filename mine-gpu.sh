@@ -102,11 +102,13 @@ while true; do
     
     # GPU-only mode (no CPU fallback)
     echo -e "${BLUE}🎮 GPU-only mode${NC}"
+    echo "   Debug: MV_LEN=$MV_LEN"
     MINER_CMD="$MINER_BIN \
         --header-hex $HEADER_HEX \
         --bits-hex $DIFFICULTY \
         --mv-len $MV_LEN \
-        --gpu --brute"
+        --gpu-brute"
+    echo "   Debug: Full command: $MINER_CMD"
     
     echo -e "${YELLOW}⛏️  Mining block...${NC}"
     MINE_START=$(date +%s)

@@ -479,10 +479,19 @@ impl GpuMiner {
                 let mut hash = [0u8; 32];
                 hash.copy_from_slice(cpu_hash.as_bytes());
                 
-                // Return nonce as mutation vector (8 bytes, little-endian)
-                let mut nonce_bytes = vec![0u8; 8];
-                for i in 0..8 {
+                // Return nonce as mutation vector (respecting mv_len)
+                let mut nonce_bytes = vec![0u8; self.mv_len];
+                // Fill first 8 bytes with nonce (little-endian)
+                for i in 0..8.min(self.mv_len) {
                     nonce_bytes[i] = ((nonce >> (i * 8)) & 0xFF) as u8;
+                }
+                // Fill remaining bytes with random data if mv_len > 8
+                if self.mv_len > 8 {
+                    use rand::Rng;
+                    let mut rng = rand::thread_rng();
+                    for i in 8..self.mv_len {
+                        nonce_bytes[i] = rng.gen();
+                    }
                 }
                 
                 return Some((nonce_bytes, hash));
