@@ -37,9 +37,11 @@ impl GpuMiner {
         if ptx_content.is_none() {
             let paths = vec![
                 "./blake3.ptx",
+                "./xenom-miner-rust/blake3.ptx",
                 "./src/blake3.ptx",
                 "../src/blake3.ptx",
                 "blake3.ptx",
+                "xenom-miner-rust/blake3.ptx",
             ];
             for path in paths {
                 if let Ok(content) = std::fs::read_to_string(path) {
