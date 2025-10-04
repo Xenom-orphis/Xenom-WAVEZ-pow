@@ -24,7 +24,7 @@ object DifficultyAdjustment {
   // Minimum and maximum difficulty bounds
   // MIN: Floor to prevent getting too hard for CPU
   // MAX: Cap at maximum value (easy mining) when hashrate is low
-  val MIN_DIFFICULTY: Long = 0x1e000000L  // Floor to keep CPU-mineable
+  val MIN_DIFFICULTY: Long = 0x1d00ffffL  // Floor to keep CPU-mineable (valid coefficient)
   val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
   
   // Per-block adjustment limits - very conservative to prevent oscillation
