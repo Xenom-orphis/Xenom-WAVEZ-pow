@@ -180,6 +180,44 @@ while true; do
             continue
         fi
         
+        # Verify the solution with CPU Blake3 before submitting
+        echo -e "${YELLOW}🔍 Verifying solution with CPU Blake3...${NC}"
+        if command -v blake3sum >/dev/null 2>&1; then
+            CPU_HASH=$(echo -n "${HEADER_HEX}${MUTATION_VECTOR}" | xxd -r -p | blake3sum | cut -d' ' -f1)
+        elif command -v b3sum >/dev/null 2>&1; then
+            CPU_HASH=$(echo -n "${HEADER_HEX}${MUTATION_VECTOR}" | xxd -r -p | b3sum | cut -d' ' -f1)
+        fi
+        
+        if [ -n "$CPU_HASH" ]; then
+            echo "   CPU Blake3: ${CPU_HASH:0:32}..."
+            echo "   GPU Hash:   ${SOLUTION_HASH:0:32}..."
+            
+            if [ "$CPU_HASH" != "$SOLUTION_HASH" ]; then
+                echo -e "${RED}❌ Hash mismatch between GPU and CPU!${NC}"
+                echo "   This indicates a problem with the GPU Blake3 implementation"
+                sleep 5
+                continue
+            else
+                echo -e "${GREEN}✅ Hash verified${NC}"
+                
+                # Also verify target comparison
+                echo -e "${YELLOW}🎯 Checking target comparison...${NC}"
+                echo "   Hash:   $CPU_HASH"
+                echo "   Target: ${TARGET_HEX:-$(printf "%064s" | tr ' ' '0' | sed 's/^/007fffff/')}"
+                
+                # Simple lexicographic comparison (big-endian hex strings)
+                if [[ "$CPU_HASH" < "${TARGET_HEX:-007fffff$(printf "%056s" | tr ' ' '0')}" ]]; then
+                    echo -e "${GREEN}✅ Hash meets target${NC}"
+                else
+                    echo -e "${RED}❌ Hash does NOT meet target${NC}"
+                    echo "   This solution should be rejected"
+                fi
+            fi
+        else
+            echo "   (blake3sum/b3sum not available, skipping verification)"
+            echo "   Install with: ./install-blake3sum.sh"
+        fi
+        
         echo ""
         
         # Submit solution to node
