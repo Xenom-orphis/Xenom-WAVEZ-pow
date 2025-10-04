@@ -118,7 +118,7 @@ impl GpuMiner {
                 let h_bytes = digest.as_bytes();
                 // Compare to target (big-endian)
                 // Convert target once above; here compare BigUint directly for clarity
-                let h_big = BigUint::from_bytes_be(h_bytes);
+                let h_big = BigUint::from_bytes_le(h_bytes);
                 if &h_big <= target {
                     found_idx = Some(idx);
                     break;
@@ -332,7 +332,7 @@ pub fn cpu_ga_mine(
             let hash_bytes = hash.as_bytes();
 
             // Check if solution
-            let hash_bigint = BigUint::from_bytes_be(hash_bytes);
+            let hash_bigint = BigUint::from_bytes_le(hash_bytes);
             if &hash_bigint <= target {
                 let mut result = [0u8; 32];
                 result.copy_from_slice(hash_bytes);

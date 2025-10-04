@@ -173,12 +173,16 @@ __global__ void evaluate_fitness(
     
     const uint8_t *hash = hashes + (idx * 32);
     
-    // Compare hash to target (big-endian)
-    bool meets_target = true;
-    for (int i = 0; i < 32; i++) {
-        if (hash[i] < target_bytes[i]) {
-            break; // hash < target, solution found!
-        } else if (hash[i] > target_bytes[i]) {
+    // Compare hash to target as LITTLE-ENDIAN integers.
+    // Most significant byte is at index 31.
+    bool meets_target = true; // assume true until proven otherwise
+    for (int k = 31; k >= 0; --k) {
+        uint8_t h = hash[k];
+        uint8_t t = target_bytes[k];
+        if (h < t) {
+            // hash < target => meets
+            break;
+        } else if (h > t) {
             meets_target = false;
             break;
         }
@@ -189,11 +193,12 @@ __global__ void evaluate_fitness(
         return;
     }
     
-    // Calculate distance from target (higher bytes have more weight)
+    // Calculate a distance proxy: weight more significant bytes higher.
     float dist = 0.0f;
-    for (int i = 0; i < 32; i++) {
-        int diff = (int)hash[i] - (int)target_bytes[i];
-        dist += diff * (32 - i); // Weight by position
+    for (int k = 31; k >= 0; --k) {
+        int diff = (int)hash[k] - (int)target_bytes[k];
+        int weight = k + 1; // higher index => more significant
+        dist += diff * weight;
     }
     
     // Inverse fitness (smaller distance = higher fitness)

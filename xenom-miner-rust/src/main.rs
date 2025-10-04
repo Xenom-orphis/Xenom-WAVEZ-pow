@@ -88,7 +88,8 @@ fn blake3_hash(input: &[u8]) -> [u8; 32] {
 }
 
 fn hash_to_biguint(hash: &[u8]) -> num_bigint::BigUint {
-    num_bigint::BigUint::from_bytes_be(hash)
+    // Interpret digest as little-endian integer to match network comparison
+    num_bigint::BigUint::from_bytes_le(hash)
 }
 
 // 目的値（target）の BigUint と比較可能な適応度へ変換。ハッシュが小さいほど良い。
