@@ -42,6 +42,15 @@ fn main() {
 
         // Export PTX path so the binary can load it at runtime
         println!("cargo:rustc-env=CUDA_BLAKE3_PTX={}", ptx_file.display());
+        
+        // Also copy PTX to project root for easier deployment
+        let root_ptx = PathBuf::from("blake3.ptx");
+        if let Err(e) = std::fs::copy(&ptx_file, &root_ptx) {
+            println!("cargo:warning=Failed to copy PTX to project root: {}", e);
+        } else {
+            println!("cargo:warning=PTX also copied to {}", root_ptx.display());
+        }
+        
         println!(
             "cargo:warning=CUDA kernel compiled successfully to {}",
             ptx_file.display()

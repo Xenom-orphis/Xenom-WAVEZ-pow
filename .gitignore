@@ -42,3 +42,4 @@ package
 native
 
 !lang/jvm/lib/*.jar
+xenom-miner-rust/blake3.ptx

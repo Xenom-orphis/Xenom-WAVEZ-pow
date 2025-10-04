@@ -21,21 +21,44 @@ impl GpuMiner {
         // Initialize CUDA device
         let device = CudaDevice::new(0)?;
 
-        // Try to load compiled PTX from env (set by build.rs)
+        // Try to load compiled PTX - check multiple locations
         let mut has_kernels = false;
+        let mut ptx_content: Option<String> = None;
+        
+        // 1. Try environment variable (set during build)
         if let Ok(ptx_path) = std::env::var("CUDA_BLAKE3_PTX") {
-            eprintln!("📦 Loading CUDA kernels from: {}", ptx_path);
-            match std::fs::read_to_string(&ptx_path) {
-                Ok(ptx) => {
-                    let module_name = "blake3_kernels";
-                    // Ignore error if already loaded
-                    if let Err(e) = device.load_ptx(
-                        ptx.into(),
-                        module_name,
-                        &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"],
-                    ) {
-                        eprintln!("⚠️  Failed to load PTX module: {}", e);
-                    }
+            eprintln!("📦 Trying CUDA_BLAKE3_PTX: {}", ptx_path);
+            if let Ok(content) = std::fs::read_to_string(&ptx_path) {
+                ptx_content = Some(content);
+            }
+        }
+        
+        // 2. Try relative to current directory (for deployed binaries)
+        if ptx_content.is_none() {
+            let paths = vec![
+                "./blake3.ptx",
+                "./src/blake3.ptx",
+                "../src/blake3.ptx",
+                "blake3.ptx",
+            ];
+            for path in paths {
+                if let Ok(content) = std::fs::read_to_string(path) {
+                    eprintln!("📦 Found PTX at: {}", path);
+                    ptx_content = Some(content);
+                    break;
+                }
+            }
+        }
+        
+        // 3. Load kernels if PTX found
+        if let Some(ptx) = ptx_content {
+            let module_name = "blake3_kernels";
+            match device.load_ptx(
+                ptx.into(),
+                module_name,
+                &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"],
+            ) {
+                Ok(_) => {
                     has_kernels = device.get_func(module_name, "blake3_hash_batch").is_some()
                         && device.get_func(module_name, "evaluate_fitness").is_some()
                         && device.get_func(module_name, "genetic_operators").is_some();
@@ -43,15 +66,19 @@ impl GpuMiner {
                     if has_kernels {
                         eprintln!("✅ CUDA kernels loaded successfully");
                     } else {
-                        eprintln!("❌ CUDA kernels not found in PTX module");
+                        eprintln!("❌ PTX loaded but kernels not found in module");
                     }
                 }
                 Err(e) => {
-                    eprintln!("❌ Failed to read PTX file: {}", e);
+                    eprintln!("❌ Failed to load PTX module: {}", e);
                 }
             }
         } else {
-            eprintln!("❌ CUDA_BLAKE3_PTX environment variable not set");
+            eprintln!("❌ PTX file not found. Tried:");
+            eprintln!("   - CUDA_BLAKE3_PTX env var");
+            eprintln!("   - ./blake3.ptx");
+            eprintln!("   - ./src/blake3.ptx");
+            eprintln!("   Compile the CUDA kernel: nvcc --ptx src/blake3.cu -o blake3.ptx -arch=sm_60 --use_fast_math -O3");
         }
 
         Ok(Self {
