@@ -109,7 +109,7 @@ while true; do
         --generations $GENERATIONS \
         --mv-len $MV_LEN"
     if [ -n "$TARGET_HEX" ] && [ "$TARGET_HEX" != "null" ]; then
-        MINER_CMD="$MINER_CMD --target-hex $TARGET_HEX"
+        MINER_CMD="$MINER_CMD --target-hex $TARGET_HEX --bits-hex $DIFFICULTY"
     else
         MINER_CMD="$MINER_CMD --bits-hex $DIFFICULTY"
     fi
