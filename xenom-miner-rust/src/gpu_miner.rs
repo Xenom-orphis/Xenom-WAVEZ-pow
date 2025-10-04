@@ -24,19 +24,34 @@ impl GpuMiner {
         // Try to load compiled PTX from env (set by build.rs)
         let mut has_kernels = false;
         if let Ok(ptx_path) = std::env::var("CUDA_BLAKE3_PTX") {
-            let ptx = std::fs::read_to_string(&ptx_path)?;
-            // Load module with our three kernels
-            // Module name must be unique per device
-            let module_name = "blake3_kernels";
-            // Ignore error if already loaded
-            let _ = device.load_ptx(
-                ptx.into(),
-                module_name,
-                &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"],
-            );
-            has_kernels = device.get_func(module_name, "blake3_hash_batch").is_some()
-                && device.get_func(module_name, "evaluate_fitness").is_some()
-                && device.get_func(module_name, "genetic_operators").is_some();
+            eprintln!("📦 Loading CUDA kernels from: {}", ptx_path);
+            match std::fs::read_to_string(&ptx_path) {
+                Ok(ptx) => {
+                    let module_name = "blake3_kernels";
+                    // Ignore error if already loaded
+                    if let Err(e) = device.load_ptx(
+                        ptx.into(),
+                        module_name,
+                        &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"],
+                    ) {
+                        eprintln!("⚠️  Failed to load PTX module: {}", e);
+                    }
+                    has_kernels = device.get_func(module_name, "blake3_hash_batch").is_some()
+                        && device.get_func(module_name, "evaluate_fitness").is_some()
+                        && device.get_func(module_name, "genetic_operators").is_some();
+                    
+                    if has_kernels {
+                        eprintln!("✅ CUDA kernels loaded successfully");
+                    } else {
+                        eprintln!("❌ CUDA kernels not found in PTX module");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Failed to read PTX file: {}", e);
+                }
+            }
+        } else {
+            eprintln!("❌ CUDA_BLAKE3_PTX environment variable not set");
         }
 
         Ok(Self {
@@ -189,7 +204,10 @@ impl GpuMiner {
         target: &BigUint,
         batches: usize,
     ) -> Option<(Vec<u8>, [u8; 32])> {
-        if !self.has_kernels { return None; }
+        if !self.has_kernels {
+            eprintln!("❌ GPU mining unavailable: CUDA kernels not loaded");
+            return None;
+        }
 
         let module = "blake3_kernels";
         // Static device buffers reused across batches
