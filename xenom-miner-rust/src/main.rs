@@ -20,6 +20,10 @@ struct Args {
     #[arg(short, long)]
     bits_hex: String,
 
+    /// 32-byte target in hex (big-endian). If provided, this takes precedence over bits.
+    #[arg(long)]
+    target_hex: Option<String>,
+
     /// mutation vector のバイト長
     #[arg(short = 'm', long, default_value_t = 16usize)]
     mv_len: usize,
@@ -273,12 +277,37 @@ fn main() {
     // 簡略化のため、ユーザーがこのヘッダプレフィックス（mutationVector 本体は含まない）を与える前提
     let header_prefix = Arc::new(header_bytes_all);
 
-    let bits_u32 = parse_bits_hex(&args.bits_hex);
-    let target = compact_bits_to_target(bits_u32);
+    let target = if let Some(thex) = &args.target_hex {
+        let mut tbytes = hex_to_bytes(thex);
+        // Normalize to 32 bytes big-endian
+        if tbytes.len() < 32 {
+            let mut pad = vec![0u8; 32 - tbytes.len()];
+            pad.extend_from_slice(&tbytes);
+            tbytes = pad;
+        } else if tbytes.len() > 32 {
+            let start = tbytes.len() - 32;
+            tbytes = tbytes[start..].to_vec();
+        }
+        println!("Using target_hex from template");
+        num_bigint::BigUint::from_bytes_be(&tbytes)
+    } else {
+        let bits_u32 = parse_bits_hex(&args.bits_hex);
+        let t = compact_bits_to_target(bits_u32);
+        println!("Using bits_hex for target");
+        t
+    };
     {
         // Log computed target for visibility
-        let t_bytes = target.to_bytes_be();
-        let hex_str = if t_bytes.is_empty() { String::from("00") } else { hex::encode(&t_bytes) };
+        let mut t_bytes = target.to_bytes_be();
+        if t_bytes.len() < 32 {
+            let mut pad = vec![0u8; 32 - t_bytes.len()];
+            pad.extend_from_slice(&t_bytes);
+            t_bytes = pad;
+        } else if t_bytes.len() > 32 {
+            let start = t_bytes.len() - 32;
+            t_bytes = t_bytes[start..].to_vec();
+        }
+        let hex_str = hex::encode(&t_bytes);
         println!("Computed target (hex, big-endian): {}", hex_str);
     }
 

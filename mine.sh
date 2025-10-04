@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NODE_URL="http://127.0.0.1:36669"  # Main node (seed)
+NODE_URL="http://eu.losmuchachos.digital:36669"  # Main node (seed)
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 
 # Check if miner binary exists
@@ -27,6 +27,7 @@ while true; do
     HEADER=$(echo "$TEMPLATE" | jq -r .header_prefix_hex)
     TIMESTAMP=$(echo "$TEMPLATE" | jq -r .timestamp)
     DIFFICULTY=$(echo "$TEMPLATE" | jq -r .difficulty_bits)
+    TARGET=$(echo "$TEMPLATE" | jq -r .target_hex)
     
     if [ -z "$HEADER" ] || [ "$HEADER" = "null" ] || [ -z "$HEIGHT" ]; then
         echo "❌ Invalid template response. Is the node running?"
@@ -37,10 +38,11 @@ while true; do
     echo "Mining new block $HEIGHT (timestamp: $TIMESTAMP)"
     echo "Header prefix: ${HEADER:0:32}..."
     echo "Difficulty: 0x$DIFFICULTY"
-    # Use brute-force mode (MUCH faster than genetic algorithm!)
+    echo "Target: ${TARGET:0:16}..."
+    # Use brute-force mode with target_hex (MUCH faster than genetic algorithm!)
     RESULT=$($MINER_BIN \
         --header-hex "$HEADER" \
-        --bits-hex $DIFFICULTY \
+        --target-hex "$TARGET" \
         --mv-len 16 \
         --threads 0 \
         --brute 2>&1)

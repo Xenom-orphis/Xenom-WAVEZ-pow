@@ -14,7 +14,7 @@ case class BlockHeaderResponse(header_hex: String)
 case class BlockHeaderPrefixResponse(header_prefix_hex: String)
 case class MiningSubmission(height: Long, mutation_vector_hex: String, timestamp: Option[Long] = None)
 case class MiningSubmissionResponse(success: Boolean, message: String, hash: Option[String] = None)
-case class MiningTemplateResponse(height: Long, header_prefix_hex: String, difficulty_bits: String, timestamp: Long)
+case class MiningTemplateResponse(height: Long, header_prefix_hex: String, difficulty_bits: String, target_hex: String, timestamp: Long)
 
 trait BlockStorage {
   def getBlockHeaderByHeight(height: Long): Option[_root_.consensus.BlockHeader]
@@ -177,15 +177,30 @@ class BlockHeaderRoutes(
             val fullBytes = template.bytes()
             val prefixBytes = fullBytes.take(fullBytes.length - 16) // Remove 16-byte MV
             
+            // Calculate 32-byte big-endian target from difficulty bits
+            val target = pow.Pow.targetFromBits(difficulty)
+            val targetBytes = target.toByteArray
+            // Ensure exactly 32 bytes, pad with zeros if needed
+            val target32Bytes = if (targetBytes.length < 32) {
+              Array.fill(32 - targetBytes.length)(0.toByte) ++ targetBytes
+            } else if (targetBytes.length > 32) {
+              targetBytes.takeRight(32)
+            } else {
+              targetBytes
+            }
+            val targetHex = target32Bytes.map("%02x".format(_)).mkString
+            
             log.info(s"📋 Created mining template for height $newHeight")
             log.info(s"   Parent: ${parent.bytes().take(32).map("%02x".format(_)).mkString.take(16)}...")
             log.info(s"   Timestamp: $currentTime")
             log.info(s"   Difficulty: ${com.wavesplatform.mining.DifficultyAdjustment.difficultyDescription(difficulty)}")
+            log.info(s"   Target: ${targetHex.take(16)}...")
             
             MiningTemplateResponse(
               height = newHeight,
               header_prefix_hex = prefixBytes.map("%02x".format(_)).mkString,
               difficulty_bits = f"${difficulty}%08x",  // Dynamic difficulty as hex
+              target_hex = targetHex,  // 32-byte big-endian target
               timestamp = currentTime
             )
           case None =>
@@ -241,5 +256,5 @@ object BlockHeaderRoutes {
   implicit val blockHeaderPrefixResponseFormat: RootJsonFormat[BlockHeaderPrefixResponse] = jsonFormat1(BlockHeaderPrefixResponse.apply)
   implicit val miningSubmissionFormat: RootJsonFormat[MiningSubmission] = jsonFormat3(MiningSubmission.apply)
   implicit val miningSubmissionResponseFormat: RootJsonFormat[MiningSubmissionResponse] = jsonFormat3(MiningSubmissionResponse.apply)
-  implicit val miningTemplateResponseFormat: RootJsonFormat[MiningTemplateResponse] = jsonFormat4(MiningTemplateResponse.apply)
+  implicit val miningTemplateResponseFormat: RootJsonFormat[MiningTemplateResponse] = jsonFormat5(MiningTemplateResponse.apply)
 }

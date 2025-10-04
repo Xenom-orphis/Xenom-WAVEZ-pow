@@ -78,9 +78,10 @@ while true; do
         continue
     fi
     
-    # Parse template (API returns header_prefix_hex and difficulty_bits)
+    # Parse template (API returns header_prefix_hex, difficulty_bits, and optionally target_hex)
     HEADER_HEX=$(echo "$TEMPLATE" | grep -o '"header_prefix_hex":"[^"]*"' | cut -d'"' -f4)
     DIFFICULTY=$(echo "$TEMPLATE" | grep -o '"difficulty_bits":"[^"]*"' | cut -d'"' -f4)
+    TARGET_HEX=$(echo "$TEMPLATE" | grep -o '"target_hex":"[^"]*"' | cut -d'"' -f4)
     TIMESTAMP=$(echo "$TEMPLATE" | grep -o '"timestamp":[0-9]*' | cut -d':' -f2)
     
     if [ -z "$HEADER_HEX" ] || [ -z "$DIFFICULTY" ]; then
@@ -93,16 +94,23 @@ while true; do
     echo -e "${GREEN}✅ Template received${NC}"
     echo "   Header length: ${#HEADER_HEX} chars"
     echo "   Difficulty: 0x$DIFFICULTY"
+    if [ -n "$TARGET_HEX" ]; then
+        echo "   Target (hex, BE): ${TARGET_HEX:0:16}..."
+    fi
     echo "   Timestamp: $TIMESTAMP"
     echo ""
     
     # Build miner command
     MINER_CMD="$MINER_BIN \
         --header-hex $HEADER_HEX \
-        --bits-hex $DIFFICULTY \
         --population $POPULATION \
         --generations $GENERATIONS \
         --mv-len $MV_LEN"
+    if [ -n "$TARGET_HEX" ]; then
+        MINER_CMD="$MINER_CMD --target-hex $TARGET_HEX"
+    else
+        MINER_CMD="$MINER_CMD --bits-hex $DIFFICULTY"
+    fi
     
     if [ "$USE_GPU" = "true" ]; then
         MINER_CMD="$MINER_CMD --gpu --gpu-brute --batches $BATCHES --mutation-rate $MUTATION_RATE"
