@@ -2,13 +2,12 @@
 
 package com.wavesplatform.api.http
 
-import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.server.Route
+import org.apache.pekko.http.scaladsl.server.Directives._
 import org.apache.pekko.http.scaladsl.model.StatusCodes
 import org.apache.pekko.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import spray.json._
 import spray.json.DefaultJsonProtocol._
-import _root_.consensus.BlockHeader
 
 case class BlockHeaderResponse(header_hex: String)
 case class BlockHeaderPrefixResponse(header_prefix_hex: String)

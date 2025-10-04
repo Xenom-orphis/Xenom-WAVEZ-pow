@@ -1,7 +1,7 @@
 package com.wavesplatform.mining
 
 import cats.syntax.either.*
-import com.wavesplatform.account.{Address, KeyPair, PKKeyPair}
+import com.wavesplatform.account.{Address, KeyPair}
 import com.wavesplatform.block.Block.*
 import com.wavesplatform.block.{Block, BlockHeader, SignedBlockHeader}
 import com.wavesplatform.common.state.ByteStr
@@ -26,7 +26,7 @@ import com.wavesplatform.wallet.Wallet
 import io.netty.channel.group.ChannelGroup
 import kamon.Kamon
 import monix.eval.Task
-import monix.execution.cancelables.{CompositeCancelable, SerialCancelable}
+import monix.execution.cancelables.SerialCancelable
 import monix.execution.schedulers.SchedulerService
 import monix.reactive.Observable
 
@@ -56,7 +56,7 @@ class MinerImpl(
     settings: WavesSettings,
     timeService: Time,
     utx: UtxPool,
-    wallet: Wallet,
+    @annotation.unused wallet: Wallet,
     pos: PoSSelector,
     val minerScheduler: SchedulerService,
     val appenderScheduler: SchedulerService,
@@ -70,7 +70,7 @@ class MinerImpl(
   private val minMicroBlockDurationMills = minerSettings.minMicroBlockAge.toMillis
   private val blockchainSettings         = settings.blockchainSettings
 
-  private val scheduledAttempts = SerialCancelable()
+  @annotation.unused private val scheduledAttempts = SerialCancelable()
   private val microBlockAttempt = SerialCancelable()
 
   @volatile

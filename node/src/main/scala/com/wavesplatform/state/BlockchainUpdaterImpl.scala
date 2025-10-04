@@ -444,7 +444,7 @@ class BlockchainUpdaterImpl(
                 // Note: Rewards must be handled at block creation time, not here
                 // This area runs after block is already committed
                 if (block.header.rewardVote == -1L) {
-                  val powReward = 6L * com.wavesplatform.settings.Constants.UnitsInWave
+                  @annotation.unused val powReward = 6L * com.wavesplatform.settings.Constants.UnitsInWave
                   val minerAddress = block.header.generator.toAddress
                   log.info(s"💰 PoW block mined by ${minerAddress} - rewards handled separately")
                 }

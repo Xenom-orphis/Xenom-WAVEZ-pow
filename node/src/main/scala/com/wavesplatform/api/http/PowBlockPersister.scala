@@ -5,10 +5,9 @@ import com.wavesplatform.common.state.ByteStr
 import com.wavesplatform.crypto
 import com.wavesplatform.lang.ValidationError
 import com.wavesplatform.network.{BlockForged, ChannelGroupExt}
-import com.wavesplatform.settings.WavesSettings
 import com.wavesplatform.state.Blockchain
 import com.wavesplatform.transaction.BlockchainUpdater
-import com.wavesplatform.utils.{ScorexLogging, Time}
+import com.wavesplatform.utils.ScorexLogging
 import com.wavesplatform.wallet.Wallet
 import io.netty.channel.group.ChannelGroup
 import monix.eval.Task
@@ -122,7 +121,7 @@ class PowBlockPersister(
 
           // Append to blockchain
           val appendTask = blockAppender(block)
-          val result = Await.result(appendTask.runToFuture(scheduler), 10.seconds)
+          val result = Await.result(appendTask.runToFuture(using scheduler), 10.seconds)
 
           result match {
             case Right(_) =>
