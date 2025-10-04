@@ -5,7 +5,7 @@ use std::process::Command;
 fn main() {
     #[cfg(feature = "cuda")]
     {
-        println!("cargo:rerun-if-changed=src/blake3.cu");
+        println!("cargo:rerun-if-changed=src/blake3_simple.cu");
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
         let cu_file = "src/blake3.cu";
@@ -23,10 +23,11 @@ fn main() {
         let arch = std::env::var("CUDA_ARCH").unwrap_or_else(|_| "sm_75".to_string());
         println!("cargo:warning=Using CUDA compute capability: {}", arch);
         
+        // Use simplified Blake3 implementation
         let output = std::process::Command::new("nvcc")
             .args(&[
                 "--ptx",
-                "src/blake3.cu",
+                "src/blake3_simple.cu",
                 "-o",
                 ptx_file.to_str().unwrap(),
                 &format!("-arch={}", arch),
