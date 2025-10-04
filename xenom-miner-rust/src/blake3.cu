@@ -173,10 +173,10 @@ __global__ void evaluate_fitness(
     
     const uint8_t *hash = hashes + (idx * 32);
     
-    // Compare hash to target as LITTLE-ENDIAN integers.
-    // Most significant byte is at index 31.
+    // Compare hash to target as BIG-ENDIAN integers.
+    // Most significant byte is at index 0 (matches Rust from_bytes_be).
     bool meets_target = true; // assume true until proven otherwise
-    for (int k = 31; k >= 0; --k) {
+    for (int k = 0; k < 32; ++k) {
         uint8_t h = hash[k];
         uint8_t t = target_bytes[k];
         if (h < t) {
@@ -195,9 +195,9 @@ __global__ void evaluate_fitness(
     
     // Calculate a distance proxy: weight more significant bytes higher.
     float dist = 0.0f;
-    for (int k = 31; k >= 0; --k) {
+    for (int k = 0; k < 32; ++k) {
         int diff = (int)hash[k] - (int)target_bytes[k];
-        int weight = k + 1; // higher index => more significant
+        int weight = 32 - k; // lower index => more significant (big-endian)
         dist += diff * weight;
     }
     

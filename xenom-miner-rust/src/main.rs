@@ -92,7 +92,7 @@ fn blake3_hash(input: &[u8]) -> [u8; 32] {
 }
 
 fn hash_to_biguint(hash: &[u8]) -> num_bigint::BigUint {
-    // Interpret digest as little-endian integer to match network comparison
+    // Interpret digest as big-endian integer (byte 0 is MSB)
     num_bigint::BigUint::from_bytes_be(hash)
 }
 
