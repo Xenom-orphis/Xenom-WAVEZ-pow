@@ -9,11 +9,7 @@ set +e
 NODE_URL="${NODE_URL:-http://localhost:36669}"
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 USE_GPU="${USE_GPU:-true}"
-POPULATION="${POPULATION:-8192}"
-GENERATIONS="${GENERATIONS:-1000}"
-MUTATION_RATE="${MUTATION_RATE:-0.01}"
-MV_LEN="${MV_LEN:-16}"
-BATCHES="${BATCHES:-5000}"
+MV_LEN="${MV_LEN:-16}"  # Same as mine.sh
 
 # Colors for output
 RED='\033[0;31m'
@@ -53,12 +49,8 @@ echo -e "${BLUE}🚀 Xenom GPU Miner${NC}"
 echo "================================="
 echo "Node: $NODE_URL"
 echo "GPU Mode: $USE_GPU"
-echo "Population: $POPULATION"
-echo "Generations: $GENERATIONS"
-echo "Mutation Rate: $MUTATION_RATE"
 echo "MV Length: $MV_LEN"
-echo "Mode: GPU brute-force"
-echo "Batches: $BATCHES"
+echo "Mode: Brute-force"
 echo ""
 
 # Mining loop
@@ -69,8 +61,14 @@ while true; do
     echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${YELLOW}📡 Fetching mining template...${NC}"
     
+    # Build template URL with optional miner address (like mine.sh)
+    TEMPLATE_URL="$NODE_URL/mining/template"
+    if [ ! -z "$MINER_ADDRESS" ]; then
+        TEMPLATE_URL="$TEMPLATE_URL?address=$MINER_ADDRESS"
+    fi
+    
     # Get mining template from node
-    TEMPLATE=$(curl -s "${NODE_URL}/mining/template" || echo "")
+    TEMPLATE=$(curl -s "$TEMPLATE_URL" || echo "")
     
     if [ -z "$TEMPLATE" ]; then
         echo -e "${RED}❌ Failed to fetch template from node${NC}"
@@ -102,20 +100,18 @@ while true; do
     echo "   Timestamp: $TIMESTAMP"
     echo ""
     
-    # Build miner command
+    # Build miner command (simplified like mine.sh but with GPU support)
     MINER_CMD="$MINER_BIN \
         --header-hex $HEADER_HEX \
-        --population $POPULATION \
-        --generations $GENERATIONS \
+        --bits-hex $DIFFICULTY \
         --mv-len $MV_LEN"
-    if [ -n "$TARGET_HEX" ] && [ "$TARGET_HEX" != "null" ]; then
-        MINER_CMD="$MINER_CMD --target-hex $TARGET_HEX --bits-hex $DIFFICULTY"
-    else
-        MINER_CMD="$MINER_CMD --bits-hex $DIFFICULTY"
-    fi
     
     if [ "$USE_GPU" = "true" ]; then
-        MINER_CMD="$MINER_CMD --gpu --gpu-brute --batches $BATCHES --mutation-rate $MUTATION_RATE"
+        # Use GPU brute-force mode (similar to --brute but on GPU)
+        MINER_CMD="$MINER_CMD --gpu --brute"
+    else
+        # Use CPU brute-force mode (like mine.sh)
+        MINER_CMD="$MINER_CMD --brute --threads 0"
     fi
     
     echo -e "${YELLOW}⛏️  Mining block...${NC}"
@@ -146,13 +142,13 @@ while true; do
         continue
     fi
     
-    # Check if solution was found
-    if echo "$MINER_OUTPUT" | grep -q "SOLUTION FOUND"; then
+    # Check if solution was found (using same format as mine.sh)
+    if echo "$MINER_OUTPUT" | grep -q "FOUND"; then
         echo -e "${GREEN}✅ Solution found in ${MINE_DURATION}s!${NC}"
         
-        # Extract mutation vector
-        MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "Mutation vector:" | sed 's/.*Mutation vector: //' | tr -d ' ')
-        SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: //' | tr -d ' ')
+        # Extract mutation vector (same format as mine.sh)
+        MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+        SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: //' | tr -d ' ' || echo "N/A")
         
         echo "   Mutation vector: $MUTATION_VECTOR"
         echo "   Hash: ${SOLUTION_HASH:0:32}..."
