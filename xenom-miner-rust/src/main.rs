@@ -396,7 +396,11 @@ fn mine_loop(args: &Args) {
                 }
             });
             
-            solution.lock().unwrap().take()
+            // Extract solution after all threads complete
+            Arc::try_unwrap(solution)
+                .ok()
+                .and_then(|mutex| mutex.into_inner().ok())
+                .flatten()
         };
         
         #[cfg(not(feature = "cuda"))]

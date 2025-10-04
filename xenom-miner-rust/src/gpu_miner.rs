@@ -284,7 +284,7 @@ impl GpuMiner {
         for _ in 0..batches {
             // Fill with random bytes
             rng.fill(&mut host_pop[..]);
-            let mut d_population: CudaSlice<u8> = self.device.htod_copy(host_pop.clone()).ok()?;
+            let d_population: CudaSlice<u8> = self.device.htod_copy(host_pop.clone()).ok()?;
 
             unsafe {
                 // Fetch kernels each iteration to avoid moving them across launches
