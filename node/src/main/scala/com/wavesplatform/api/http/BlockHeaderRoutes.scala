@@ -225,7 +225,7 @@ class BlockHeaderRoutes(
             StatusCodes.InternalServerError -> "Unable to fetch parent block for template"
         }
       }
-    } ~ 
+    } ~
     // GET endpoint to fetch header for mining
     (get & path("block" / LongNumber / "headerHex")) { height =>
       complete {

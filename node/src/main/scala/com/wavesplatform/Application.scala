@@ -260,7 +260,7 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
         utxStorage,
         pos,
         appenderScheduler
-      )(block, None).map(_.map(_ => ())),
+      )(block, None).map(_.map(_ => None)),
       wallet,
       allChannels,  // For broadcasting PoW blocks to network peers
       appenderScheduler

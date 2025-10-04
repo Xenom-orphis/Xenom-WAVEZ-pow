@@ -15,11 +15,12 @@ import monix.eval.Task
 import monix.execution.Scheduler
 
 import scala.concurrent.Await
+import scala.concurrent.duration.DurationInt
 /**
  * Handles persistence of PoW-mined blocks to the blockchain.
  */
 class PowBlockPersister(
-    blockchainUpdater: BlockchainUpdater with Blockchain,
+    blockchainUpdater: BlockchainUpdater & Blockchain,
     blockAppender: Block => Task[Either[ValidationError, Option[BigInt]]],
     wallet: Wallet,
     allChannels: ChannelGroup,
@@ -124,20 +125,20 @@ class PowBlockPersister(
           val result = Await.result(appendTask.runToFuture(scheduler), 10.seconds)
 
           result match {
-        case Right(_) =>
-          log.info(s"✅ PoW block successfully added to blockchain at height ${blockchainUpdater.height}")
-          
-          // Broadcast to network peers (like regular PoS miner does)
-          if (blockchainUpdater.isLastBlockId(block.id())) {
-            allChannels.broadcast(BlockForged(block))
-            log.info(s"📡 Broadcast PoW block ${block.id().toString.take(16)}... to network peers")
+            case Right(_) =>
+              log.info(s"✅ PoW block successfully added to blockchain at height ${blockchainUpdater.height}")
+              
+              // Broadcast to network peers (like regular PoS miner does)
+              if (blockchainUpdater.isLastBlockId(block.id())) {
+                allChannels.broadcast(BlockForged(block))
+                log.info(s"📡 Broadcast PoW block ${block.id().toString.take(16)}... to network peers")
+              }
+              
+              Right(block.id().toString)
+            case Left(err) =>
+              log.error(s"❌ Failed to append PoW block: $err")
+              Left(err)
           }
-          
-          Right(block.id().toString)
-        case Left(error) =>
-          log.error(s"❌ Failed to append PoW block: $error")
-          Left(error)
-      }
       } // Close match block for generator
     } catch {
       case e: Exception =>
