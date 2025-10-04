@@ -94,6 +94,8 @@ while true; do
         --bits-hex $DIFFICULTY \
         --mv-len $MV_LEN \
         --gpu \
+        --mine-loop \
+        --node-url $NODE_URL \
         --gpu-brute"
     
     MINE_START=$(date +%s)
