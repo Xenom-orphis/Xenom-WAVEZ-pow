@@ -324,13 +324,13 @@ impl GpuMiner {
             
             // Debug: Show max fitness every 1000 batches AND first 3 hashes on first batch
             if batch_idx == 0 {
-                // Pull hashes from GPU for inspection
-                let mut host_hashes = vec![0u8; 3 * 32]; // First 3 hashes
-                self.device.dtoh_sync_copy_into(&d_hashes, &mut host_hashes).ok()?;
+                // Pull ALL hashes from GPU (need full buffer for cudarc)
+                let mut all_host_hashes = vec![0u8; self.population_size * 32];
+                self.device.dtoh_sync_copy_into(&d_hashes, &mut all_host_hashes).ok()?;
                 
                 eprintln!("🔍 First 3 GPU hashes:");
                 for i in 0..3 {
-                    let hash = &host_hashes[i*32..(i+1)*32];
+                    let hash = &all_host_hashes[i*32..(i+1)*32];
                     eprintln!("  Hash {}: {}", i, hex::encode(hash));
                 }
                 
