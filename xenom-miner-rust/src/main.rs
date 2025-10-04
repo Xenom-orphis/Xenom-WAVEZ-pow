@@ -14,12 +14,14 @@ mod node_client;
 #[command(author, version, about = "Xenom optimized miner (Rust) - BLAKE3 + GA", long_about = None)]
 struct Args {
     /// ヘッダバイトの 16 進文字列（`BlockHeader.bytes()` のシリアライズ形式に準拠）
+    /// Not required in --mine-loop mode
     #[arg(short, long)]
-    header_hex: String,
+    header_hex: Option<String>,
 
     /// difficulty bits（compact uint32）の 16 進表記。例: 1f00ffff
+    /// Not required in --mine-loop mode
     #[arg(short, long)]
-    bits_hex: String,
+    bits_hex: Option<String>,
 
     /// 32-byte target in hex (big-endian). If provided, this takes precedence over bits.
     #[arg(long)]
@@ -392,6 +394,12 @@ fn main() {
         return;
     }
     
+    // Validate required arguments for single-shot mode
+    if args.header_hex.is_none() || args.bits_hex.is_none() {
+        eprintln!("Error: --header-hex and --bits-hex are required when not using --mine-loop");
+        std::process::exit(1);
+    }
+    
     if args.threads > 0 {
         rayon::ThreadPoolBuilder::new()
             .num_threads(args.threads)
@@ -400,7 +408,7 @@ fn main() {
     }
 
     // 入力の解析
-    let header_bytes_all = hex_to_bytes(&args.header_hex);
+    let header_bytes_all = hex_to_bytes(args.header_hex.as_ref().unwrap());
     // header_hex は mutationVector 直前までのプレフィックス（= mutationVector より前の全シリアライズ項目）を想定
     // 簡略化のため、ユーザーがこのヘッダプレフィックス（mutationVector 本体は含まない）を与える前提
     let header_prefix = Arc::new(header_bytes_all);
@@ -419,7 +427,7 @@ fn main() {
         println!("Using target_hex from template");
         num_bigint::BigUint::from_bytes_be(&tbytes)
     } else {
-        let bits_u32 = parse_bits_hex(&args.bits_hex);
+        let bits_u32 = parse_bits_hex(args.bits_hex.as_ref().unwrap());
         let t = compact_bits_to_target(bits_u32);
         println!("Using bits_hex for target");
         t
