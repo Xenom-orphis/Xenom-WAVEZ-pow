@@ -14,7 +14,7 @@ case class BlockHeaderResponse(header_hex: String)
 case class BlockHeaderPrefixResponse(header_prefix_hex: String)
 case class MiningSubmission(height: Long, mutation_vector_hex: String, timestamp: Option[Long] = None)
 case class MiningSubmissionResponse(success: Boolean, message: String, hash: Option[String] = None)
-case class MiningTemplateResponse(height: Long, header_prefix_hex: String, difficulty_bits: String, target_hex: String, timestamp: Long)
+case class MiningTemplateResponse(height: Long, header_prefix_hex: String, difficulty_bits: String, target_hex: String, timestamp: Long, miner_address: String)
 
 trait BlockStorage {
   def getBlockHeaderByHeight(height: Long): Option[_root_.consensus.BlockHeader]
@@ -23,7 +23,8 @@ trait BlockStorage {
 class BlockHeaderRoutes(
   blockStorage: BlockStorage,
   blockchainUpdater: com.wavesplatform.state.Blockchain,
-  powBlockPersister: Option[PowBlockPersister] = None
+  powBlockPersister: Option[PowBlockPersister] = None,
+  wallet: Option[com.wavesplatform.wallet.Wallet] = None
 ) extends ApiRoute {
   import BlockHeaderRoutes._
   
@@ -129,8 +130,10 @@ class BlockHeaderRoutes(
       }
     } ~ 
     // GET endpoint to create new PoW block template for mining
+    // Accepts optional ?address=3Mxxx... parameter to set reward recipient
     (get & path("mining" / "template")) {
-      complete {
+      parameters("address".optional) { minerAddressOpt =>
+        complete {
         // Get the latest block from blockchain
         val currentHeight = blockStorage.getBlockHeaderByHeight(0) match {
           case Some(_) => 
@@ -191,9 +194,22 @@ class BlockHeaderRoutes(
             }
             val targetHex = target32Bytes.map("%02x".format(_)).mkString
             
+            // Determine reward address: use provided address or fallback to node wallet
+            val rewardAddress = minerAddressOpt.getOrElse {
+              // Fallback to node's first wallet address
+              wallet.flatMap { w =>
+                w.privateKeyAccounts.headOption.map(_.toAddress.toString)
+              }.getOrElse {
+                // Ultimate fallback if wallet not available
+                log.warn("⚠️  No wallet configured and no miner address provided - using default address")
+                "3M4qwDomRabJKLZxuXhwfqLApQkU592nWxF"
+              }
+            }
+            
             log.info(s"📋 Created mining template for height $newHeight")
             log.info(s"   Parent: ${parent.bytes().take(32).map("%02x".format(_)).mkString.take(16)}...")
             log.info(s"   Timestamp: $currentTime")
+            log.info(s"   Miner Address: $rewardAddress")
             log.info(s"   Difficulty: ${com.wavesplatform.mining.DifficultyAdjustment.difficultyDescription(difficulty)}")
             log.info(s"   Target: ${targetHex.take(16)}...")
             
@@ -202,7 +218,8 @@ class BlockHeaderRoutes(
               header_prefix_hex = prefixBytes.map("%02x".format(_)).mkString,
               difficulty_bits = f"${difficulty}%08x",  // Dynamic difficulty as hex
               target_hex = targetHex,  // 32-byte big-endian target
-              timestamp = currentTime
+              timestamp = currentTime,
+              miner_address = rewardAddress
             )
           case None =>
             StatusCodes.InternalServerError -> "Unable to fetch parent block for template"
@@ -211,42 +228,43 @@ class BlockHeaderRoutes(
     } ~ 
     // GET endpoint to fetch header for mining
     (get & path("block" / LongNumber / "headerHex")) { height =>
-    complete {
-      blockStorage.getBlockHeaderByHeight(height) match {
-        case Some(header) =>
-          val headerBytes = header.bytes()
-          val prefixBytes = headerBytes.take(headerBytes.length - header.mutationVector.length)
-          BlockHeaderPrefixResponse(prefixBytes.map("%02x".format(_)).mkString)
-        case None =>
-          StatusCodes.NotFound -> s"Block at height $height not found"
+      complete {
+        blockStorage.getBlockHeaderByHeight(height) match {
+          case Some(header) =>
+            val headerBytes = header.bytes()
+            val prefixBytes = headerBytes.take(headerBytes.length - header.mutationVector.length)
+            BlockHeaderPrefixResponse(prefixBytes.map("%02x".format(_)).mkString)
+          case None =>
+            StatusCodes.NotFound -> s"Block at height $height not found"
+        }
       }
-    }
-  } ~ (get & path("block" / LongNumber / "headerJson")) { height =>
-    complete {
-      blockStorage.getBlockHeaderByHeight(height) match {
-        case Some(header) =>
-          val json = s"""
-            |{
-            |  "version": ${header.version},
-            |  "parentId": "${header.parentId.map("%02x".format(_)).mkString}",
-            |  "stateRoot": "${header.stateRoot.map("%02x".format(_)).mkString}",
-            |  "timestamp": ${header.timestamp},
-            |  "difficultyBits": "${header.difficultyBits.toHexString}",
-            |  "nonce": ${header.nonce},
-            |  "mutationVector": "${header.mutationVector.map("%02x".format(_)).mkString}"
-            |}
-          """.stripMargin
-          json
-        case None => StatusCodes.NotFound -> s"Block at height $height not found"
+    } ~ (get & path("block" / LongNumber / "headerJson")) { height =>
+      complete {
+        blockStorage.getBlockHeaderByHeight(height) match {
+          case Some(header) =>
+            val json = s"""
+              |{
+              |  "version": ${header.version},
+              |  "parentId": "${header.parentId.map("%02x".format(_)).mkString}",
+              |  "stateRoot": "${header.stateRoot.map("%02x".format(_)).mkString}",
+              |  "timestamp": ${header.timestamp},
+              |  "difficultyBits": "${header.difficultyBits.toHexString}",
+              |  "nonce": ${header.nonce},
+              |  "mutationVector": "${header.mutationVector.map("%02x".format(_)).mkString}"
+              |}
+            """.stripMargin
+            json
+          case None => StatusCodes.NotFound -> s"Block at height $height not found"
+        }
       }
-    }
-  } ~ (get & path("block" / LongNumber / "headerRawHex")) { height =>
-    complete {
-      blockStorage.getBlockHeaderByHeight(height) match {
-        case Some(header) =>
-          BlockHeaderResponse(header.bytes().map("%02x".format(_)).mkString)
-        case None =>
-          StatusCodes.NotFound -> s"Block at height $height not found"
+    } ~ (get & path("block" / LongNumber / "headerRawHex")) { height =>
+      complete {
+        blockStorage.getBlockHeaderByHeight(height) match {
+          case Some(header) =>
+            BlockHeaderResponse(header.bytes().map("%02x".format(_)).mkString)
+          case None =>
+            StatusCodes.NotFound -> s"Block at height $height not found"
+        }
       }
     }
   }
@@ -257,5 +275,5 @@ object BlockHeaderRoutes {
   implicit val blockHeaderPrefixResponseFormat: RootJsonFormat[BlockHeaderPrefixResponse] = jsonFormat1(BlockHeaderPrefixResponse.apply)
   implicit val miningSubmissionFormat: RootJsonFormat[MiningSubmission] = jsonFormat3(MiningSubmission.apply)
   implicit val miningSubmissionResponseFormat: RootJsonFormat[MiningSubmissionResponse] = jsonFormat3(MiningSubmissionResponse.apply)
-  implicit val miningTemplateResponseFormat: RootJsonFormat[MiningTemplateResponse] = jsonFormat5(MiningTemplateResponse.apply)
+  implicit val miningTemplateResponseFormat: RootJsonFormat[MiningTemplateResponse] = jsonFormat6(MiningTemplateResponse.apply)
 }

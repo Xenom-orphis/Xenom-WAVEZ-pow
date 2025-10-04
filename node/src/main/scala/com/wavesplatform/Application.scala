@@ -254,9 +254,6 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
     // PowBlockPersister for adding validated PoW blocks to blockchain
     val powBlockPersister = new com.wavesplatform.api.http.PowBlockPersister(
       blockchainUpdater,
-      wallet,
-      time,
-      settings,
       block => BlockAppender(
         blockchainUpdater,
         time,
@@ -264,8 +261,9 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
         pos,
         appenderScheduler
       )(block, None).map(_.map(_ => ())),
-      appenderScheduler,
-      allChannels  // For broadcasting PoW blocks to network peers
+      wallet,
+      allChannels,  // For broadcasting PoW blocks to network peers
+      appenderScheduler
     )
 
     val processFork =
@@ -562,7 +560,7 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
           routeTimeout
         ),
         RewardApiRoute(blockchainUpdater),
-        new BlockHeaderRoutes(blockStorage, blockchainUpdater, Some(powBlockPersister))
+        new BlockHeaderRoutes(blockStorage, blockchainUpdater, Some(powBlockPersister), Some(wallet))
       )
 
       val httpService = CompositeHttpService(apiRoutes, settings.restAPISettings)

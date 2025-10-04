@@ -8,6 +8,7 @@ pub struct MiningTemplate {
     pub difficulty_bits: String,
     pub target_hex: String,
     pub timestamp: u64,
+    pub miner_address: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -27,6 +28,7 @@ pub struct SubmissionResponse {
 pub struct NodeClient {
     base_url: String,
     client: reqwest::blocking::Client,
+    miner_address: Option<String>,
 }
 
 impl NodeClient {
@@ -37,11 +39,23 @@ impl NodeClient {
                 .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .expect("Failed to create HTTP client"),
+            miner_address: None,
         }
     }
 
+    pub fn with_miner_address(mut self, address: String) -> Self {
+        self.miner_address = Some(address);
+        self
+    }
+
     pub fn get_template(&self) -> Result<MiningTemplate, Box<dyn Error>> {
-        let url = format!("{}/mining/template", self.base_url);
+        let mut url = format!("{}/mining/template", self.base_url);
+        
+        // Add miner address as query parameter if provided
+        if let Some(addr) = &self.miner_address {
+            url = format!("{}?address={}", url, addr);
+        }
+        
         let response = self.client.get(&url).send()?;
         
         if !response.status().is_success() {

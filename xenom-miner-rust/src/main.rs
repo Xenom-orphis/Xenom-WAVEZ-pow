@@ -74,6 +74,10 @@ struct Args {
     /// GPU device ID to use (default: 0)
     #[arg(long, default_value_t = 0)]
     gpu_id: usize,
+
+    /// Miner wallet address to receive rewards (Waves address format: 3Mxxx...)
+    #[arg(long)]
+    miner_address: Option<String>,
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
@@ -282,7 +286,13 @@ fn mine_loop(args: &Args) {
     use std::sync::Arc;
     use std::sync::atomic::{AtomicBool, Ordering};
     
-    let client = NodeClient::new(args.node_url.clone());
+    let mut client = NodeClient::new(args.node_url.clone());
+    
+    // Set miner address if provided
+    if let Some(addr) = &args.miner_address {
+        println!("💰 Mining rewards will go to: {}", addr);
+        client = client.with_miner_address(addr.clone());
+    }
     
     #[cfg(feature = "cuda")]
     let gpu_miners: Vec<gpu_miner::GpuMiner> = if args.gpu {
