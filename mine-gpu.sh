@@ -2,7 +2,8 @@
 # GPU-accelerated mining script for Xenom PoW blockchain
 # Integrates with the existing node REST API
 
-set -e
+# Don't exit on errors - we want to keep mining in a loop
+set +e
 
 # Configuration
 NODE_URL="${NODE_URL:-http://localhost:36669}"
@@ -78,16 +79,13 @@ while true; do
         continue
     fi
     
-    # Parse template (API returns header_prefix_hex, difficulty_bits, and optionally target_hex)
-    HEADER_HEX=$(echo "$TEMPLATE" | grep -o '"header_prefix_hex":"[^"]*"' | cut -d'"' -f4)
-    DIFFICULTY=$(echo "$TEMPLATE" | grep -o '"difficulty_bits":"[^"]*"' | cut -d'"' -f4)
-    TARGET_HEX=$(echo "$TEMPLATE" | grep -o '"target_hex":"[^"]*"' | cut -d'"' -f4)
-    TIMESTAMP=$(echo "$TEMPLATE" | grep -o '"timestamp":[0-9]*' | cut -d':' -f2)
-    # Extract template fields
+    # Parse template using jq
     HEIGHT=$(echo "$TEMPLATE" | jq -r .height)
-
+    HEADER_HEX=$(echo "$TEMPLATE" | jq -r .header_prefix_hex)
     DIFFICULTY=$(echo "$TEMPLATE" | jq -r .difficulty_bits)
-    if [ -z "$HEADER_HEX" ] || [ -z "$DIFFICULTY" ]; then
+    TARGET_HEX=$(echo "$TEMPLATE" | jq -r .target_hex)
+    TIMESTAMP=$(echo "$TEMPLATE" | jq -r .timestamp)
+    if [ -z "$HEADER_HEX" ] || [ "$HEADER_HEX" = "null" ] || [ -z "$DIFFICULTY" ]; then
         echo -e "${RED}❌ Invalid template response${NC}"
         echo "   Response: $TEMPLATE"
         sleep 5
@@ -95,9 +93,10 @@ while true; do
     fi
     
     echo -e "${GREEN}✅ Template received${NC}"
+    echo "   Height: $HEIGHT"
     echo "   Header length: ${#HEADER_HEX} chars"
     echo "   Difficulty: 0x$DIFFICULTY"
-    if [ -n "$TARGET_HEX" ]; then
+    if [ -n "$TARGET_HEX" ] && [ "$TARGET_HEX" != "null" ]; then
         echo "   Target (hex, BE): ${TARGET_HEX:0:16}..."
     fi
     echo "   Timestamp: $TIMESTAMP"
@@ -109,7 +108,7 @@ while true; do
         --population $POPULATION \
         --generations $GENERATIONS \
         --mv-len $MV_LEN"
-    if [ -n "$TARGET_HEX" ]; then
+    if [ -n "$TARGET_HEX" ] && [ "$TARGET_HEX" != "null" ]; then
         MINER_CMD="$MINER_CMD --target-hex $TARGET_HEX"
     else
         MINER_CMD="$MINER_CMD --bits-hex $DIFFICULTY"
@@ -170,15 +169,17 @@ while true; do
         HASH=$(echo "$SUBMIT_RESULT" | jq -r .hash)
         
         if [ "$SUCCESS" = "true" ]; then
-            echo "✅ Solution accepted!"
+            echo -e "${GREEN}✅ Solution accepted!${NC}"
             echo "   Message: $MESSAGE"
             echo "   Block hash: $HASH"
         else
-            echo "❌ Solution rejected: $MESSAGE"
+            echo -e "${RED}❌ Solution rejected: $MESSAGE${NC}"
         fi
     else
         echo -e "${YELLOW}⏭️  No solution found in ${MINE_DURATION}s, trying next template...${NC}"
         echo ""
-        sleep 1
     fi
+    
+    # Brief pause before fetching next template
+    sleep 2
 done
