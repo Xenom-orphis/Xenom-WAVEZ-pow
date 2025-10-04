@@ -203,10 +203,37 @@ while true; do
             echo "   GPU Hash:   ${SOLUTION_HASH:0:32}..."
             
             if [ "$CPU_HASH" != "$SOLUTION_HASH" ]; then
-                echo -e "${RED}❌ Hash mismatch between GPU and CPU!${NC}"
-                echo "   This indicates a problem with the GPU Blake3 implementation"
-                sleep 5
-                continue
+                echo -e "${RED}❌ Hash mismatch between GPU and CPU Blake3!${NC}"
+                echo -e "${YELLOW}🔄 GPU Blake3 is buggy, falling back to CPU mode...${NC}"
+                
+                # Retry with CPU mode for this block
+                MINER_CMD="$MINER_BIN \
+                    --header-hex $HEADER_HEX \
+                    --bits-hex $DIFFICULTY \
+                    --mv-len $MV_LEN \
+                    --threads 0 \
+                    --brute"
+                MINER_OUTPUT=$($MINER_CMD 2>&1)
+                
+                # Re-extract mutation vector from CPU result
+                MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+                SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: *//' | sed 's/[^a-f0-9].*//' || echo "N/A")
+                
+                echo "   CPU retry - MV: $MUTATION_VECTOR"
+                echo "   CPU retry - Hash: ${SOLUTION_HASH:0:32}..."
+                
+                # Verify CPU solution
+                if command -v b3sum >/dev/null 2>&1; then
+                    CPU_HASH_RETRY=$(echo -n "${HEADER_HEX}${MUTATION_VECTOR}" | xxd -r -p | b3sum | cut -d' ' -f1)
+                    if [ "$CPU_HASH_RETRY" = "$SOLUTION_HASH" ]; then
+                        echo -e "${GREEN}✅ CPU solution verified${NC}"
+                        CPU_HASH="$CPU_HASH_RETRY"  # Use CPU hash for submission
+                    else
+                        echo -e "${RED}❌ CPU solution also failed verification${NC}"
+                        sleep 5
+                        continue
+                    fi
+                fi
             else
                 echo -e "${GREEN}✅ Hash verified${NC}"
                 
