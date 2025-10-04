@@ -287,7 +287,7 @@ fn mine_loop(args: &Args) {
     #[cfg(feature = "cuda")]
     let gpu_miners: Vec<gpu_miner::GpuMiner> = if args.gpu {
         // Auto-detect number of GPUs or use single GPU
-        let num_gpus = if args.gpu_id == 0 && std::env::var("MULTI_GPU").is_ok() {
+        let miners = if args.gpu_id == 0 && std::env::var("MULTI_GPU").is_ok() {
             // Try to detect all GPUs
             (0..8).filter_map(|id| {
                 gpu_miner::GpuMiner::new(args.population, args.mv_len, id).ok()
@@ -303,20 +303,20 @@ fn mine_loop(args: &Args) {
             }
         };
         
-        if gpu_miners.is_empty() {
+        if miners.is_empty() {
             eprintln!("❌ No GPUs available");
             return;
         }
         
         println!("🔄 Starting continuous mining loop");
         println!("   Node: {}", args.node_url);
-        println!("   GPUs: {} device(s)", gpu_miners.len());
+        println!("   GPUs: {} device(s)", miners.len());
         println!("   GPU Brute-force: {}", args.gpu_brute);
         println!("   Batches: {}", args.batches);
         println!("   Population per GPU: {}", args.population);
         println!("");
         
-        gpu_miners
+        miners
     } else {
         println!("❌ --gpu flag required for mining loop");
         return;
