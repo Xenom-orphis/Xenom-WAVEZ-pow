@@ -16,31 +16,33 @@ fn main() {
             panic!("nvcc not found. Please install CUDA Toolkit and ensure nvcc is in PATH");
         });
 
-        println!("cargo:warning=Compiling CUDA kernel with nvcc...");
+        println!("cargo:warning=Compiling CUDA kernel with nvcc at {:?}...", nvcc);
 
         // Compile CUDA to PTX
-        let output = Command::new(nvcc)
+        // Determine compute capability (use sm_50 as safe default)
+        let arch = std::env::var("CUDA_ARCH").unwrap_or_else(|_| "sm_50".to_string());
+        println!("cargo:warning=Using CUDA compute capability: {}", arch);
+        
+        let output = std::process::Command::new("nvcc")
             .args(&[
                 "--ptx",
-                cu_file,
+                "src/blake3.cu",
                 "-o",
                 ptx_file.to_str().unwrap(),
-                "-arch=sm_60", // Compute capability 6.0+ (Pascal and newer)
+                &format!("-arch={}", arch),
                 "--use_fast_math",
                 "-O3",
             ])
             .output()
-            .expect("Failed to execute nvcc");
+            .expect("Failed to run nvcc. Ensure CUDA Toolkit is installed and nvcc is in PATH.");
 
         if !output.status.success() {
             panic!(
-                "nvcc failed:\nstdout: {}\nstderr: {}",
+                "nvcc failed:\nstdout: {}\nstderr: {}\nTry setting CUDA_ARCH environment variable (e.g., CUDA_ARCH=sm_75)",
                 String::from_utf8_lossy(&output.stdout),
                 String::from_utf8_lossy(&output.stderr)
             );
         }
-
-        // Export PTX path so the binary can load it at runtime
         println!("cargo:rustc-env=CUDA_BLAKE3_PTX={}", ptx_file.display());
         
         // Also copy PTX to project root for easier deployment
