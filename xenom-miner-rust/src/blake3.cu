@@ -189,7 +189,8 @@ extern "C" __global__ void evaluate_fitness(
     }
     
     if (meets_target) {
-        fitness[idx] = 1.0f;
+        // Use a very large value to signal solution found (unmistakable)
+        fitness[idx] = 999999.0f;
         return;
     }
     
@@ -201,7 +202,7 @@ extern "C" __global__ void evaluate_fitness(
         dist += diff * weight;
     }
     
-    // Inverse fitness (smaller distance = higher fitness)
+    // Inverse fitness (smaller distance = higher fitness, always < 1.0)
     fitness[idx] = 1.0f / (1.0f + fabsf(dist) / 10000.0f);
 }
 

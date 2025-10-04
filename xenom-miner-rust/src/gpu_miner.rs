@@ -313,9 +313,9 @@ impl GpuMiner {
                 ).ok()?;
             }
 
-            // Pull fitness and check for solution
+            // Pull fitness and check for solution (fitness == 999999.0 means hash meets target)
             self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
-            if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f >= 1.0) {
+            if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f > 100000.0) {
                 let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
                 let mut candidate = header_prefix.to_vec();
                 candidate.extend_from_slice(&mv);
