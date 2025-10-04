@@ -45,12 +45,12 @@ if [ "${ALWAYS_REBUILD:-false}" = "true" ]; then
     popd >/dev/null
 fi
 
-echo -e "${BLUE}🚀 Xenom GPU Miner${NC}"
+echo -e "${BLUE}🚀 Xenom GPU-Only Miner${NC}"
 echo "================================="
 echo "Node: $NODE_URL"
-echo "GPU Mode: $USE_GPU"
+echo "Mode: GPU-only brute-force"
 echo "MV Length: $MV_LEN"
-echo "Mode: Brute-force"
+echo "No CPU fallback enabled"
 echo ""
 
 # Mining loop
@@ -100,23 +100,13 @@ while true; do
     echo "   Timestamp: $TIMESTAMP"
     echo ""
     
-    # Build miner command (EXACTLY like mine.sh for CPU, with GPU option)
-    if [ "$USE_GPU" = "true" ]; then
-        # Try GPU brute-force mode first
-        MINER_CMD="$MINER_BIN \
-            --header-hex $HEADER_HEX \
-            --bits-hex $DIFFICULTY \
-            --mv-len $MV_LEN \
-            --gpu --brute"
-    else
-        # Use EXACT same command as mine.sh
-        MINER_CMD="$MINER_BIN \
-            --header-hex $HEADER_HEX \
-            --bits-hex $DIFFICULTY \
-            --mv-len $MV_LEN \
-            --threads 0 \
-            --brute"
-    fi
+    # GPU-only mode (no CPU fallback)
+    echo -e "${BLUE}🎮 GPU-only mode${NC}"
+    MINER_CMD="$MINER_BIN \
+        --header-hex $HEADER_HEX \
+        --bits-hex $DIFFICULTY \
+        --mv-len $MV_LEN \
+        --gpu --brute"
     
     echo -e "${YELLOW}⛏️  Mining block...${NC}"
     MINE_START=$(date +%s)
@@ -125,17 +115,15 @@ while true; do
     MINER_OUTPUT=$($MINER_CMD 2>&1)
     CMD_EXIT_CODE=$?
     
-    # If GPU mining failed and we were using GPU, fallback to CPU
-    if [ $CMD_EXIT_CODE -ne 0 ] && [ "$USE_GPU" = "true" ]; then
-        echo -e "${YELLOW}⚠️  GPU mining failed, falling back to CPU...${NC}"
-        MINER_CMD="$MINER_BIN \
-            --header-hex $HEADER_HEX \
-            --bits-hex $DIFFICULTY \
-            --mv-len $MV_LEN \
-            --threads 0 \
-            --brute"
-        MINER_OUTPUT=$($MINER_CMD 2>&1)
-        CMD_EXIT_CODE=$?
+    # GPU-only mode - no CPU fallback
+    if [ $CMD_EXIT_CODE -ne 0 ]; then
+        echo -e "${RED}❌ GPU mining failed with exit code $CMD_EXIT_CODE${NC}"
+        echo "GPU miner output:"
+        echo "$MINER_OUTPUT"
+        echo ""
+        echo "💡 To enable CPU fallback, use regular mine.sh or set USE_GPU=false"
+        sleep 5
+        continue
     fi
 
     # Optionally show full miner output (set SHOW_MINER_OUTPUT=true)
@@ -165,6 +153,18 @@ while true; do
         
         # Extract mutation vector (EXACTLY like mine.sh)
         MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+        
+        # Debug: Show the FOUND line to check format
+        FOUND_LINE=$(echo "$MINER_OUTPUT" | grep "FOUND")
+        echo "   Debug - FOUND line: $FOUND_LINE"
+        echo "   Debug - MV length: ${#MUTATION_VECTOR} chars (should be 32 for 16 bytes)"
+        
+        # Check if GPU mode produced wrong mutation vector length
+        if [ ${#MUTATION_VECTOR} -eq 16 ]; then
+            echo -e "${RED}⚠️  GPU mode produced 8-byte MV instead of 16-byte!${NC}"
+            echo -e "${RED}   This will likely be rejected by the node.${NC}"
+            echo -e "${YELLOW}   Consider using mine.sh for reliable 16-byte MVs${NC}"
+        fi
         
         # Extract hash
         SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: *//' | sed 's/[^a-f0-9].*//' || echo "N/A")
