@@ -165,7 +165,7 @@ while true; do
             -H "Content-Type: application/json" \
             -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
         
-         if echo "$RESULT" | grep -q "FOUND"; then
+            if echo "$RESULT" | grep -q "FOUND"; then
         MV=$(echo "$RESULT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
         echo "✅ Found solution: $MV"
         
@@ -187,9 +187,8 @@ while true; do
             echo "❌ Solution rejected: $MESSAGE"
         fi
     else
-        echo "❌ No solution found, retrying..."
+        echo -e "${YELLOW}⏭️  No solution found in ${MINE_DURATION}s, trying next template...${NC}"
+        echo ""
+        sleep 1
     fi
-    
-    sleep 2
-    
 done
