@@ -131,7 +131,7 @@ __device__ void blake3_hash_single(const uint8_t *input, uint32_t len, uint8_t *
 }
 
 // GPU kernel: Hash header + mutation vector for each individual
-__global__ void blake3_hash_batch(
+extern "C" __global__ void blake3_hash_batch(
     const uint8_t *header_prefix,
     uint32_t header_len,
     const uint8_t *mutation_vectors,
@@ -162,7 +162,7 @@ __global__ void blake3_hash_batch(
 }
 
 // GPU kernel: Evaluate fitness (compare hash to target)
-__global__ void evaluate_fitness(
+extern "C" __global__ void evaluate_fitness(
     const uint8_t *hashes,
     const uint8_t *target_bytes,
     float *fitness,
@@ -206,7 +206,7 @@ __global__ void evaluate_fitness(
 }
 
 // GPU kernel: Tournament selection + crossover + mutation
-__global__ void genetic_operators(
+extern "C" __global__ void genetic_operators(
     const uint8_t *population_current,
     const float *fitness,
     uint8_t *population_next,
