@@ -7,6 +7,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 mod gpu_miner;
+mod node_client;
 
 /// Rust で実装された最適化マイナー。並列 GA（CPU）に対応し、GPU/OpenCL 統合用のフックを備える
 #[derive(Parser, Debug)]
@@ -59,6 +60,14 @@ struct Args {
     /// GPU mutation rate (0.0-1.0)
     #[arg(long, default_value_t = 0.01)]
     mutation_rate: f32,
+
+    /// Mine in loop mode: fetch templates from node, mine until solution found, submit
+    #[arg(long, default_value_t = false)]
+    mine_loop: bool,
+
+    /// Node URL for loop mining mode
+    #[arg(long, default_value = "http://localhost:36669")]
+    node_url: String,
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
@@ -262,8 +271,127 @@ fn run_ga(
     );
 }
 
+fn mine_loop(args: &Args) {
+    use node_client::NodeClient;
+    
+    let client = NodeClient::new(args.node_url.clone());
+    println!("🔄 Starting continuous mining loop");
+    println!("   Node: {}", args.node_url);
+    println!("   GPU: {}", args.gpu);
+    println!("   GPU Brute-force: {}", args.gpu_brute);
+    println!("   Batches: {}", args.batches);
+    println!("");
+    
+    #[cfg(feature = "cuda")]
+    let gpu_miner = if args.gpu {
+        match gpu_miner::GpuMiner::new(args.population, args.mv_len) {
+            Ok(miner) => Some(miner),
+            Err(e) => {
+                eprintln!("❌ Failed to initialize GPU miner: {}", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+    
+    loop {
+        // Fetch template from node
+        let template = match client.get_template() {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("❌ Failed to fetch template: {}", e);
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                continue;
+            }
+        };
+        
+        println!("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        println!("📋 Template received");
+        println!("   Height: {}", template.height);
+        println!("   Difficulty: 0x{}", template.difficulty_bits);
+        println!("   Target: {}...", &template.target_hex[..16]);
+        
+        // Parse header and target
+        let header_prefix = hex_to_bytes(&template.header_prefix_hex);
+        let target = if !template.target_hex.is_empty() && template.target_hex != "null" {
+            let mut tbytes = hex_to_bytes(&template.target_hex);
+            if tbytes.len() < 32 {
+                let mut pad = vec![0u8; 32 - tbytes.len()];
+                pad.extend_from_slice(&tbytes);
+                tbytes = pad;
+            }
+            num_bigint::BigUint::from_bytes_be(&tbytes)
+        } else {
+            let bits_u32 = parse_bits_hex(&template.difficulty_bits);
+            compact_bits_to_target(bits_u32)
+        };
+        
+        println!("⛏️  Mining block {}...", template.height);
+        let start = Instant::now();
+        
+        // Mine with GPU
+        #[cfg(feature = "cuda")]
+        let result = if let Some(ref miner) = gpu_miner {
+            if args.gpu_brute {
+                miner.mine_bruteforce_gpu(&header_prefix, &target, args.batches)
+            } else {
+                miner.mine_with_ga(&header_prefix, &target, args.generations, args.mutation_rate)
+            }
+        } else {
+            None
+        };
+        
+        #[cfg(not(feature = "cuda"))]
+        let result: Option<(Vec<u8>, [u8; 32])> = None;
+        
+        match result {
+            Some((mv, hash)) => {
+                let elapsed = start.elapsed();
+                println!("✅ SOLUTION FOUND in {:.2}s!", elapsed.as_secs_f64());
+                println!("   MV: {}", hex::encode(&mv));
+                println!("   Hash: {}", hex::encode(&hash));
+                
+                // Submit to node
+                println!("📤 Submitting solution...");
+                match client.submit_solution(template.height, &hex::encode(&mv), template.timestamp) {
+                    Ok(response) => {
+                        if response.success {
+                            println!("🎉 BLOCK ACCEPTED!");
+                            println!("   Message: {}", response.message);
+                            if let Some(h) = response.hash {
+                                println!("   Hash: {}...", &h[..64]);
+                            }
+                        } else {
+                            println!("❌ Solution rejected: {}", response.message);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("❌ Failed to submit: {}", e);
+                    }
+                }
+                println!("");
+            }
+            None => {
+                println!("⏭️  No solution found in {:.2}s, fetching next template...", start.elapsed().as_secs_f64());
+                println!("");
+            }
+        }
+        
+        // Small delay before next iteration
+        std::thread::sleep(std::time::Duration::from_millis(500));
+    }
+}
+
 fn main() {
     let args = Args::parse();
+    
+    // Check if loop mining mode
+    if args.mine_loop {
+        mine_loop(&args);
+        return;
+    }
+    
     if args.threads > 0 {
         rayon::ThreadPoolBuilder::new()
             .num_threads(args.threads)

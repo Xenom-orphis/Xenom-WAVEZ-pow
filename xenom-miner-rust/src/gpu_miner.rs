@@ -111,8 +111,15 @@ impl GpuMiner {
         }
         let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
 
-        // Launch configuration
-        let cfg = LaunchConfig::for_num_elems(self.population_size as u32);
+        // Optimized launch configuration for maximum GPU utilization
+        // Use larger blocks (256 threads) for better occupancy
+        let threads_per_block = 256u32;
+        let num_blocks = ((self.population_size as u32) + threads_per_block - 1) / threads_per_block;
+        let cfg = LaunchConfig {
+            grid_dim: (num_blocks, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes: 0,
+        };
 
         // Host buffers
         let mut h_fitness = vec![0f32; self.population_size];
@@ -215,7 +222,15 @@ impl GpuMiner {
         let header_len_u32 = header_prefix.len() as u32;
         let mv_len_u32 = self.mv_len as u32;
         let pop_u32 = self.population_size as u32;
-        let cfg = LaunchConfig::for_num_elems(pop_u32);
+        
+        // Optimized launch configuration for brute-force
+        let threads_per_block = 256u32;
+        let num_blocks = (pop_u32 + threads_per_block - 1) / threads_per_block;
+        let cfg = LaunchConfig {
+            grid_dim: (num_blocks, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes: 0,
+        };
 
         let mut d_hashes: CudaSlice<u8> = self.device.alloc_zeros(self.population_size * 32).ok()?;
         let mut d_fitness: CudaSlice<f32> = self.device.alloc_zeros(self.population_size).ok()?;
