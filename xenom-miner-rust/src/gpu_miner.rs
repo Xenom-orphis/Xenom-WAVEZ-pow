@@ -17,9 +17,10 @@ pub struct GpuMiner {
 
 #[cfg(feature = "cuda")]
 impl GpuMiner {
-    pub fn new(population_size: usize, mv_len: usize) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(population_size: usize, mv_len: usize, device_id: usize) -> Result<Self, Box<dyn std::error::Error>> {
         // Initialize CUDA device
-        let device = CudaDevice::new(0)?;
+        eprintln!("🎮 Initializing GPU {}", device_id);
+        let device = CudaDevice::new(device_id)?;
 
         // Try to load compiled PTX - check multiple locations
         let mut has_kernels = false;
@@ -335,6 +336,7 @@ impl GpuMiner {
     pub fn new(
         _population_size: usize,
         _mv_len: usize,
+        _device_id: usize,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Err("CUDA support not compiled. Build with --features cuda".into())
     }

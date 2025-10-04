@@ -70,6 +70,10 @@ struct Args {
     /// Node URL for loop mining mode
     #[arg(long, default_value = "http://localhost:36669")]
     node_url: String,
+
+    /// GPU device ID to use (default: 0)
+    #[arg(long, default_value_t = 0)]
+    gpu_id: usize,
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
@@ -286,7 +290,7 @@ fn mine_loop(args: &Args) {
     
     #[cfg(feature = "cuda")]
     let gpu_miner = if args.gpu {
-        match gpu_miner::GpuMiner::new(args.population, args.mv_len) {
+        match gpu_miner::GpuMiner::new(args.population, args.mv_len, args.gpu_id) {
             Ok(miner) => Some(miner),
             Err(e) => {
                 eprintln!("❌ Failed to initialize GPU miner: {}", e);
@@ -460,7 +464,7 @@ fn main() {
                 if args.gpu_brute { "brute-force" } else { "GA" }
             );
 
-            match gpu_miner::GpuMiner::new(args.population, args.mv_len) {
+            match gpu_miner::GpuMiner::new(args.population, args.mv_len, args.gpu_id) {
                 Ok(miner) => {
                     let start = Instant::now();
                     let res = if args.gpu_brute {
