@@ -10,7 +10,8 @@ NODE_URL="${NODE_URL:-http://eu.losmuchachos.digital:36669}"
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 USE_GPU="${USE_GPU:-true}"
 MV_LEN="${MV_LEN:-16}"  # Same as mine.sh
-
+POPULATION="${POPULATION:-16384}"
+BATCHES="${BATCHES:-10000}"
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -92,6 +93,9 @@ while true; do
     RESULT=$($MINER_BIN \
         --header-hex "$HEADER" \
         --bits-hex $DIFFICULTY \
+        --gpu \
+        --population "$POPULATION" \
+        --batches "$BATCHES" \
         --mv-len 16 \
         --threads 0 \
         --gpu-brute 2>&1)
