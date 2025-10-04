@@ -100,18 +100,22 @@ while true; do
     echo "   Timestamp: $TIMESTAMP"
     echo ""
     
-    # Build miner command (simplified like mine.sh but with GPU support)
-    MINER_CMD="$MINER_BIN \
-        --header-hex $HEADER_HEX \
-        --bits-hex $DIFFICULTY \
-        --mv-len $MV_LEN"
-    
+    # Build miner command (EXACTLY like mine.sh for CPU, with GPU option)
     if [ "$USE_GPU" = "true" ]; then
-        # Use GPU brute-force mode (similar to --brute but on GPU)
-        MINER_CMD="$MINER_CMD --gpu --brute"
+        # Try GPU brute-force mode first
+        MINER_CMD="$MINER_BIN \
+            --header-hex $HEADER_HEX \
+            --bits-hex $DIFFICULTY \
+            --mv-len $MV_LEN \
+            --gpu --brute"
     else
-        # Use CPU brute-force mode (like mine.sh)
-        MINER_CMD="$MINER_CMD --brute --threads 0"
+        # Use EXACT same command as mine.sh
+        MINER_CMD="$MINER_BIN \
+            --header-hex $HEADER_HEX \
+            --bits-hex $DIFFICULTY \
+            --mv-len $MV_LEN \
+            --threads 0 \
+            --brute"
     fi
     
     echo -e "${YELLOW}⛏️  Mining block...${NC}"
@@ -120,6 +124,19 @@ while true; do
     # Run miner and capture output
     MINER_OUTPUT=$($MINER_CMD 2>&1)
     CMD_EXIT_CODE=$?
+    
+    # If GPU mining failed and we were using GPU, fallback to CPU
+    if [ $CMD_EXIT_CODE -ne 0 ] && [ "$USE_GPU" = "true" ]; then
+        echo -e "${YELLOW}⚠️  GPU mining failed, falling back to CPU...${NC}"
+        MINER_CMD="$MINER_BIN \
+            --header-hex $HEADER_HEX \
+            --bits-hex $DIFFICULTY \
+            --mv-len $MV_LEN \
+            --threads 0 \
+            --brute"
+        MINER_OUTPUT=$($MINER_CMD 2>&1)
+        CMD_EXIT_CODE=$?
+    fi
 
     # Optionally show full miner output (set SHOW_MINER_OUTPUT=true)
     if [ "${SHOW_MINER_OUTPUT:-false}" = "true" ]; then
@@ -146,17 +163,8 @@ while true; do
     if echo "$MINER_OUTPUT" | grep -q "SOLUTION FOUND\|FOUND"; then
         echo -e "${GREEN}✅ Solution found in ${MINE_DURATION}s!${NC}"
         
-        # Try different extraction patterns
-        if echo "$MINER_OUTPUT" | grep -q "mv="; then
-            # Format: "FOUND mv=abcd1234..."
-            MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
-        elif echo "$MINER_OUTPUT" | grep -q "Mutation vector:"; then
-            # Format: "Mutation vector: abcd1234"
-            MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "Mutation vector:" | sed 's/.*Mutation vector: *\([a-f0-9]*\).*/\1/')
-        else
-            # Try to find any hex pattern after FOUND or SOLUTION
-            MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep -E "(FOUND|SOLUTION)" -A 5 | grep -oE '[a-f0-9]{16,}' | head -1)
-        fi
+        # Extract mutation vector (EXACTLY like mine.sh)
+        MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
         
         # Extract hash
         SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: *//' | sed 's/[^a-f0-9].*//' || echo "N/A")
@@ -231,25 +239,12 @@ while true; do
         
         echo ""
         
-        # Submit solution to node
+        # Submit solution to node (EXACTLY like mine.sh)
         echo -e "${YELLOW}📤 Submitting solution...${NC}"
-        echo "   Submitting with timestamp: $TIMESTAMP"
-        
-        # WORKAROUND: Try without timestamp first (let node use current time)
-        echo "   Trying without timestamp (let node use current time)..."
+        echo "   JSON payload: {\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}"
         SUBMIT_RESULT=$(curl -s -X POST "${NODE_URL}/mining/submit" \
             -H "Content-Type: application/json" \
-            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\"}")
-        
-        SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
-        
-        # If that fails, try with original timestamp
-        if [ "$SUCCESS" != "true" ]; then
-            echo "   Retrying with template timestamp..."
-            SUBMIT_RESULT=$(curl -s -X POST "${NODE_URL}/mining/submit" \
-                -H "Content-Type: application/json" \
-                -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
-        fi
+            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
         
         SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
         MESSAGE=$(echo "$SUBMIT_RESULT" | jq -r .message)
