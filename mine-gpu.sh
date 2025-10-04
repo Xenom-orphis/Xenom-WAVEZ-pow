@@ -165,27 +165,31 @@ while true; do
             -H "Content-Type: application/json" \
             -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
         
-        if echo "$SUBMIT_RESPONSE" | grep -q "accepted\|success\|Valid"; then
-            BLOCK_COUNT=$((BLOCK_COUNT + 1))
-            TOTAL_TIME=$(($(date +%s) - START_TIME))
-            AVG_TIME=$((TOTAL_TIME / BLOCK_COUNT))
-            
-            echo -e "${GREEN}🎉 Block accepted!${NC}"
-            echo "   Blocks mined: $BLOCK_COUNT"
-            echo "   Average time: ${AVG_TIME}s/block"
-            echo ""
-            
-            # Brief pause before next block
-            sleep 2
+         if echo "$RESULT" | grep -q "FOUND"; then
+        MV=$(echo "$RESULT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+        echo "✅ Found solution: $MV"
+        
+        # Submit the mined block
+        echo "📤 Submitting solution to node..."
+        SUBMIT_RESULT=$(curl -s -X POST "$NODE_URL/mining/submit" \
+            -H "Content-Type: application/json" \
+            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MV\", \"timestamp\": $TIMESTAMP}")
+        
+        SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
+        MESSAGE=$(echo "$SUBMIT_RESULT" | jq -r .message)
+        HASH=$(echo "$SUBMIT_RESULT" | jq -r .hash)
+        
+        if [ "$SUCCESS" = "true" ]; then
+            echo "✅ Solution accepted!"
+            echo "   Message: $MESSAGE"
+            echo "   Block hash: $HASH"
         else
-            echo -e "${RED}❌ Solution rejected${NC}"
-            echo "   Response: $SUBMIT_RESPONSE"
-            echo ""
-            sleep 1
+            echo "❌ Solution rejected: $MESSAGE"
         fi
     else
-        echo -e "${YELLOW}⏭️  No solution found in ${MINE_DURATION}s, trying next template...${NC}"
-        echo ""
-        sleep 1
+        echo "❌ No solution found, retrying..."
     fi
+    
+    sleep 2
+    
 done
