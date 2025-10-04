@@ -89,17 +89,18 @@ while true; do
     echo "Difficulty: 0x$DIFFICULTY"
     
     # GPU brute-force mode
-    MINER_CMD="$MINER_BIN \
-        --header-hex $HEADER_HEX \
+    RESULT=$($MINER_BIN \
+        --header-hex "$HEADER" \
         --bits-hex $DIFFICULTY \
-        --mv-len $MV_LEN \
-        --gpu-brute"
+        --mv-len 16 \
+        --threads 0 \
+        --gpu-brute 2>&1)
     
     MINE_START=$(date +%s)
     
     # Run miner and capture output
-    MINER_OUTPUT=$($MINER_CMD 2>&1)
-    CMD_EXIT_CODE=$?
+    MINER_OUTPUT=$RESULT
+
     
     if echo "$MINER_OUTPUT" | grep -q "FOUND"; then
         MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
