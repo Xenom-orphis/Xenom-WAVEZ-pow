@@ -1,6 +1,6 @@
 #!/bin/bash
 
-NODE_URL="${NODE_URL:-http://localhost:36669}"  # Local node by default
+NODE_URL="${NODE_URL:-http://eu.losmuchachos.digital:36669}"  # Local node by default
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 MINER_ADDRESS="${MINER_ADDRESS:-}"  # Optional: Your wallet address for rewards
 

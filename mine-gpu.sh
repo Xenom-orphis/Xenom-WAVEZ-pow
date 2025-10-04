@@ -6,7 +6,7 @@
 set +e
 
 # Configuration
-NODE_URL="${NODE_URL:-http://localhost:36669}"
+NODE_URL="${NODE_URL:-http://eu.losmuchachos.digital:36669}"
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 USE_GPU="${USE_GPU:-true}"
 MV_LEN="${MV_LEN:-16}"  # Same as mine.sh
@@ -142,16 +142,44 @@ while true; do
         continue
     fi
     
-    # Check if solution was found (using same format as mine.sh)
-    if echo "$MINER_OUTPUT" | grep -q "FOUND"; then
+    # Check if solution was found - handle different output formats
+    if echo "$MINER_OUTPUT" | grep -q "SOLUTION FOUND\|FOUND"; then
         echo -e "${GREEN}✅ Solution found in ${MINE_DURATION}s!${NC}"
         
-        # Extract mutation vector (same format as mine.sh)
-        MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
-        SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: //' | tr -d ' ' || echo "N/A")
+        # Try different extraction patterns
+        if echo "$MINER_OUTPUT" | grep -q "mv="; then
+            # Format: "FOUND mv=abcd1234..."
+            MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+        elif echo "$MINER_OUTPUT" | grep -q "Mutation vector:"; then
+            # Format: "Mutation vector: abcd1234"
+            MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "Mutation vector:" | sed 's/.*Mutation vector: *\([a-f0-9]*\).*/\1/')
+        else
+            # Try to find any hex pattern after FOUND or SOLUTION
+            MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep -E "(FOUND|SOLUTION)" -A 5 | grep -oE '[a-f0-9]{16,}' | head -1)
+        fi
+        
+        # Extract hash
+        SOLUTION_HASH=$(echo "$MINER_OUTPUT" | grep "Hash:" | sed 's/.*Hash: *//' | sed 's/[^a-f0-9].*//' || echo "N/A")
         
         echo "   Mutation vector: $MUTATION_VECTOR"
         echo "   Hash: ${SOLUTION_HASH:0:32}..."
+        
+        # Debug: Show full miner output when solution found
+        if [ "${DEBUG_SOLUTION:-false}" = "true" ]; then
+            echo "--- Full miner output ---"
+            echo "$MINER_OUTPUT"
+            echo "--- End miner output ---"
+        fi
+        
+        # Validate mutation vector format
+        if [ -z "$MUTATION_VECTOR" ] || ! echo "$MUTATION_VECTOR" | grep -qE '^[a-f0-9]+$'; then
+            echo -e "${RED}❌ Invalid mutation vector format: '$MUTATION_VECTOR'${NC}"
+            echo "   Full miner output:"
+            echo "$MINER_OUTPUT"
+            sleep 5
+            continue
+        fi
+        
         echo ""
         
         # Submit solution to node
