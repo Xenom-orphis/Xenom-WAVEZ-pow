@@ -111,22 +111,64 @@ __device__ void blake3_hash_single(const uint8_t *input, uint32_t len, uint8_t *
         cv[i] = IV[i];
     }
     
-    uint8_t block[64] = {0};
-    uint32_t block_len = (len < 64) ? len : 64;
+    uint32_t offset = 0;
+    uint64_t counter = 0;
     
-    for (uint32_t i = 0; i < block_len; i++) {
-        block[i] = input[i];
+    // Process all complete 64-byte blocks
+    while (offset + 64 <= len) {
+        uint8_t block[64];
+        for (int i = 0; i < 64; i++) {
+            block[i] = input[offset + i];
+        }
+        
+        uint8_t flags = (counter == 0) ? CHUNK_START : 0;
+        if (offset + 64 == len || offset + 64 >= BLAKE3_CHUNK_LEN) {
+            flags |= CHUNK_END;
+        }
+        if (offset + 64 == len) {
+            flags |= ROOT;
+        }
+        
+        uint32_t out[16];
+        compress(cv, block, 64, counter, flags, out);
+        
+        // Update CV with first 8 words of output
+        for (int i = 0; i < 8; i++) {
+            cv[i] = out[i];
+        }
+        
+        offset += 64;
+        counter++;
     }
     
-    uint32_t out[16];
-    compress(cv, block, (uint8_t)block_len, 0, CHUNK_START | CHUNK_END | ROOT, out);
-    
-    // Extract 32 bytes
-    for (int i = 0; i < 8; i++) {
-        output[i * 4 + 0] = (uint8_t)(out[i] & 0xFF);
-        output[i * 4 + 1] = (uint8_t)((out[i] >> 8) & 0xFF);
-        output[i * 4 + 2] = (uint8_t)((out[i] >> 16) & 0xFF);
-        output[i * 4 + 3] = (uint8_t)((out[i] >> 24) & 0xFF);
+    // Process final partial block if any
+    if (offset < len) {
+        uint8_t block[64] = {0};
+        uint32_t remaining = len - offset;
+        for (uint32_t i = 0; i < remaining; i++) {
+            block[i] = input[offset + i];
+        }
+        
+        uint8_t flags = (counter == 0) ? (CHUNK_START | CHUNK_END | ROOT) : (CHUNK_END | ROOT);
+        
+        uint32_t out[16];
+        compress(cv, block, (uint8_t)remaining, counter, flags, out);
+        
+        // Extract final 32 bytes
+        for (int i = 0; i < 8; i++) {
+            output[i * 4 + 0] = (uint8_t)(out[i] & 0xFF);
+            output[i * 4 + 1] = (uint8_t)((out[i] >> 8) & 0xFF);
+            output[i * 4 + 2] = (uint8_t)((out[i] >> 16) & 0xFF);
+            output[i * 4 + 3] = (uint8_t)((out[i] >> 24) & 0xFF);
+        }
+    } else {
+        // All blocks were complete, extract from last CV
+        for (int i = 0; i < 8; i++) {
+            output[i * 4 + 0] = (uint8_t)(cv[i] & 0xFF);
+            output[i * 4 + 1] = (uint8_t)((cv[i] >> 8) & 0xFF);
+            output[i * 4 + 2] = (uint8_t)((cv[i] >> 16) & 0xFF);
+            output[i * 4 + 3] = (uint8_t)((cv[i] >> 24) & 0xFF);
+        }
     }
 }
 
