@@ -179,7 +179,14 @@ class BlockHeaderRoutes(
             
             // Calculate 32-byte big-endian target from difficulty bits
             val target = pow.Pow.targetFromBits(difficulty)
-            val targetBytes = target.toByteArray
+            var targetBytes = target.toByteArray
+            
+            // BigInt.toByteArray can add a leading 0x00 sign byte for positive numbers
+            // Remove it if present to get the actual magnitude
+            if (targetBytes.length > 0 && targetBytes(0) == 0 && targetBytes.length > 1) {
+              targetBytes = targetBytes.tail
+            }
+            
             // Ensure exactly 32 bytes, pad with zeros if needed
             val target32Bytes = if (targetBytes.length < 32) {
               Array.fill(32 - targetBytes.length)(0.toByte) ++ targetBytes
