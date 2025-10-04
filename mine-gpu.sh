@@ -83,7 +83,10 @@ while true; do
     DIFFICULTY=$(echo "$TEMPLATE" | grep -o '"difficulty_bits":"[^"]*"' | cut -d'"' -f4)
     TARGET_HEX=$(echo "$TEMPLATE" | grep -o '"target_hex":"[^"]*"' | cut -d'"' -f4)
     TIMESTAMP=$(echo "$TEMPLATE" | grep -o '"timestamp":[0-9]*' | cut -d':' -f2)
-    
+    # Extract template fields
+    HEIGHT=$(echo "$TEMPLATE" | jq -r .height)
+
+    DIFFICULTY=$(echo "$TEMPLATE" | jq -r .difficulty_bits)
     if [ -z "$HEADER_HEX" ] || [ -z "$DIFFICULTY" ]; then
         echo -e "${RED}❌ Invalid template response${NC}"
         echo "   Response: $TEMPLATE"
@@ -160,7 +163,7 @@ while true; do
         echo -e "${YELLOW}📤 Submitting solution...${NC}"
         SUBMIT_RESPONSE=$(curl -s -X POST "${NODE_URL}/mining/submit" \
             -H "Content-Type: application/json" \
-            -d "{\"solution\": \"$MUTATION_VECTOR\"}" || echo "")
+            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
         
         if echo "$SUBMIT_RESPONSE" | grep -q "accepted\|success\|Valid"; then
             BLOCK_COUNT=$((BLOCK_COUNT + 1))
