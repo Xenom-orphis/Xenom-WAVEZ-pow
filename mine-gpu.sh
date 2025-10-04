@@ -161,19 +161,9 @@ while true; do
         
         # Submit solution to node
         echo -e "${YELLOW}📤 Submitting solution...${NC}"
-        SUBMIT_RESPONSE=$(curl -s -X POST "${NODE_URL}/mining/submit" \
+        SUBMIT_RESULT=$(curl -s -X POST "${NODE_URL}/mining/submit" \
             -H "Content-Type: application/json" \
             -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
-        
-            if echo "$RESULT" | grep -q "FOUND"; then
-        MV=$(echo "$RESULT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
-        echo "✅ Found solution: $MV"
-        
-        # Submit the mined block
-        echo "📤 Submitting solution to node..."
-        SUBMIT_RESULT=$(curl -s -X POST "$NODE_URL/mining/submit" \
-            -H "Content-Type: application/json" \
-            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MV\", \"timestamp\": $TIMESTAMP}")
         
         SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
         MESSAGE=$(echo "$SUBMIT_RESULT" | jq -r .message)
