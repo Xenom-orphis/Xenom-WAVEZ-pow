@@ -8,8 +8,8 @@ fn main() {
         println!("cargo:rerun-if-changed=src/blake3_simple.cu");
 
         let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let cu_file = "src/blake3.cu";
-        let ptx_file = out_dir.join("blake3.ptx");
+        let cu_file = "src/blake3_simple.cu";
+        let ptx_file = out_dir.join("blake3_simple.ptx");
 
         // Try to find nvcc
         let nvcc = which::which("nvcc").unwrap_or_else(|_| {
@@ -47,11 +47,17 @@ fn main() {
         println!("cargo:rustc-env=CUDA_BLAKE3_PTX={}", ptx_file.display());
         
         // Also copy PTX to project root for easier deployment
-        let root_ptx = PathBuf::from("blake3.ptx");
+        let root_ptx = PathBuf::from("blake3_simple.ptx");
         if let Err(e) = std::fs::copy(&ptx_file, &root_ptx) {
             println!("cargo:warning=Failed to copy PTX to project root: {}", e);
         } else {
             println!("cargo:warning=PTX also copied to {}", root_ptx.display());
+        }
+        
+        // Also copy with legacy name for compatibility
+        let legacy_ptx = PathBuf::from("blake3.ptx");
+        if let Err(e) = std::fs::copy(&ptx_file, &legacy_ptx) {
+            println!("cargo:warning=Failed to copy PTX to legacy name: {}", e);
         }
         
         println!(

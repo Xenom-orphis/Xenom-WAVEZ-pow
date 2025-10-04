@@ -37,6 +37,13 @@ impl GpuMiner {
         // 2. Try relative to current directory (for deployed binaries)
         if ptx_content.is_none() {
             let paths = vec![
+                "./blake3_simple.ptx",
+                "./xenom-miner-rust/blake3_simple.ptx", 
+                "./src/blake3_simple.ptx",
+                "../src/blake3_simple.ptx",
+                "blake3_simple.ptx",
+                "xenom-miner-rust/blake3_simple.ptx",
+                // Fallback to old names for compatibility
                 "./blake3.ptx",
                 "./xenom-miner-rust/blake3.ptx",
                 "./src/blake3.ptx",
@@ -55,21 +62,26 @@ impl GpuMiner {
         
         // 3. Load kernels if PTX found
         if let Some(ptx) = ptx_content {
-            let module_name = "blake3_kernels";
+            let module_name = "blake3_simple_kernels";
             match device.load_ptx(
                 ptx.into(),
                 module_name,
-                &["blake3_hash_batch", "evaluate_fitness", "genetic_operators"],
+                &["blake3_hash_batch", "evaluate_fitness", "genetic_operators", "blake3_brute_force"],
             ) {
                 Ok(_) => {
                     has_kernels = device.get_func(module_name, "blake3_hash_batch").is_some()
                         && device.get_func(module_name, "evaluate_fitness").is_some()
                         && device.get_func(module_name, "genetic_operators").is_some();
                     
+                    let has_brute_force = device.get_func(module_name, "blake3_brute_force").is_some();
+                    
                     if has_kernels {
                         eprintln!("✅ CUDA kernels loaded successfully");
+                        if has_brute_force {
+                            eprintln!("✅ Brute-force kernel also available");
+                        }
                     } else {
-                        eprintln!("❌ PTX loaded but kernels not found in module");
+                        eprintln!("❌ PTX loaded but required kernels not found in module");
                     }
                 }
                 Err(e) => {
@@ -79,9 +91,9 @@ impl GpuMiner {
         } else {
             eprintln!("❌ PTX file not found. Tried:");
             eprintln!("   - CUDA_BLAKE3_PTX env var");
-            eprintln!("   - ./blake3.ptx");
-            eprintln!("   - ./src/blake3.ptx");
-            eprintln!("   Compile the CUDA kernel: nvcc --ptx src/blake3.cu -o blake3.ptx -arch=sm_60 --use_fast_math -O3");
+            eprintln!("   - ./blake3_simple.ptx");
+            eprintln!("   - ./src/blake3_simple.ptx");
+            eprintln!("   Compile the CUDA kernel: nvcc --ptx src/blake3_simple.cu -o blake3_simple.ptx -arch=sm_60 --use_fast_math -O3");
         }
 
         Ok(Self {
@@ -104,7 +116,7 @@ impl GpuMiner {
             return None;
         }
 
-        let module = "blake3_kernels";
+        let module = "blake3_simple_kernels";
 
         // Prepare buffers
         let pop = self.population_size as u32;
@@ -246,7 +258,7 @@ impl GpuMiner {
             return None;
         }
 
-        let module = "blake3_kernels";
+        let module = "blake3_simple_kernels";
         // Static device buffers reused across batches
         let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
         let header_len_u32 = header_prefix.len() as u32;
@@ -369,6 +381,118 @@ impl GpuMiner {
 
         None
     }
+
+    /// Optimized GPU brute-force using the new blake3_brute_force kernel
+    /// This uses systematic nonce search instead of random mutation vectors
+    pub fn mine_bruteforce_nonce_gpu(
+        &self,
+        header_prefix: &[u8],
+        target: &BigUint,
+        start_nonce: u64,
+        max_nonces: u64,
+    ) -> Option<(Vec<u8>, [u8; 32])> {
+        if !self.has_kernels {
+            eprintln!("❌ GPU mining unavailable: CUDA kernels not loaded");
+            return None;
+        }
+
+        let module = "blake3_simple_kernels";
+        
+        // Check if brute-force kernel is available
+        if self.device.get_func(module, "blake3_brute_force").is_none() {
+            eprintln!("⚠️  blake3_brute_force kernel not available, falling back to batch method");
+            return self.mine_bruteforce_gpu(header_prefix, target, (max_nonces / self.population_size as u64) as usize);
+        }
+
+        // Prepare target bytes on device
+        let mut target_bytes = target.to_bytes_be();
+        if target_bytes.len() < 32 {
+            let mut pad = vec![0u8; 32 - target_bytes.len()];
+            pad.extend_from_slice(&target_bytes);
+            target_bytes = pad;
+        } else if target_bytes.len() > 32 {
+            let start = target_bytes.len() - 32;
+            target_bytes = target_bytes[start..].to_vec();
+        }
+
+        let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
+        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
+        let mut d_solution_found: CudaSlice<u8> = self.device.alloc_zeros(1).ok()?;
+        let mut d_solution_nonce: CudaSlice<u64> = self.device.alloc_zeros(1).ok()?;
+
+        let header_len_u32 = header_prefix.len() as u32;
+        let threads_per_block = 256u32;
+        let num_blocks = 1024u32; // Use many blocks for better GPU utilization
+        let total_threads = threads_per_block * num_blocks;
+        let iterations_per_thread = ((max_nonces + total_threads as u64 - 1) / total_threads as u64).max(1) as u32;
+
+        let cfg = LaunchConfig {
+            grid_dim: (num_blocks, 1, 1),
+            block_dim: (threads_per_block, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        eprintln!("🚀 Starting GPU brute-force: {} threads, {} iterations each", 
+                 total_threads, iterations_per_thread);
+        eprintln!("🎯 Target range: {} to {}", start_nonce, start_nonce + max_nonces);
+
+        unsafe {
+            let func_brute = match self.device.get_func(module, "blake3_brute_force") {
+                Some(f) => f,
+                None => return None,
+            };
+
+            func_brute.launch(cfg, (
+                &d_header,           // const uint8_t* header_prefix
+                header_len_u32,      // uint32_t header_len
+                start_nonce,         // uint64_t start_nonce
+                &d_target,           // const uint8_t* target_bytes
+                &mut d_solution_found, // uint8_t* solution_found
+                &mut d_solution_nonce, // uint64_t* solution_nonce
+                iterations_per_thread, // uint32_t max_iterations
+            )).ok()?;
+        }
+
+        // Check results
+        let mut solution_found = vec![0u8; 1];
+        let mut solution_nonce = vec![0u64; 1];
+        
+        self.device.dtoh_sync_copy_into(&d_solution_found, &mut solution_found).ok()?;
+        
+        if solution_found[0] != 0 {
+            self.device.dtoh_sync_copy_into(&d_solution_nonce, &mut solution_nonce).ok()?;
+            let nonce = solution_nonce[0];
+            
+            eprintln!("✅ GPU brute-force found solution at nonce: {}", nonce);
+            
+            // Verify solution on CPU
+            let mut input = header_prefix.to_vec();
+            // Append nonce as 8 bytes (little-endian)
+            for i in 0..8 {
+                input.push(((nonce >> (i * 8)) & 0xFF) as u8);
+            }
+            
+            let cpu_hash = blake3::hash(&input);
+            let hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
+            
+            if hash_uint <= *target {
+                let mut hash = [0u8; 32];
+                hash.copy_from_slice(cpu_hash.as_bytes());
+                
+                // Return nonce as mutation vector (8 bytes, little-endian)
+                let mut nonce_bytes = vec![0u8; 8];
+                for i in 0..8 {
+                    nonce_bytes[i] = ((nonce >> (i * 8)) & 0xFF) as u8;
+                }
+                
+                return Some((nonce_bytes, hash));
+            } else {
+                eprintln!("⚠️  GPU solution failed CPU verification");
+            }
+        }
+
+        None
+    }
 }
 
 #[cfg(not(feature = "cuda"))]
@@ -397,6 +521,16 @@ impl GpuMiner {
         _header_prefix: &[u8],
         _target: &BigUint,
         _batches: usize,
+    ) -> Option<(Vec<u8>, [u8; 32])> {
+        None
+    }
+
+    pub fn mine_bruteforce_nonce_gpu(
+        &self,
+        _header_prefix: &[u8],
+        _target: &BigUint,
+        _start_nonce: u64,
+        _max_nonces: u64,
     ) -> Option<(Vec<u8>, [u8; 32])> {
         None
     }
