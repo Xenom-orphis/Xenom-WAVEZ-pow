@@ -212,6 +212,17 @@ while true; do
                     echo -e "${RED}❌ Hash does NOT meet target${NC}"
                     echo "   This solution should be rejected"
                 fi
+                
+                # CRITICAL: Test with current timestamp (like the node does)
+                echo -e "${YELLOW}🕐 Testing with current timestamp (node behavior)...${NC}"
+                CURRENT_TIMESTAMP=$(date +%s%3N)
+                echo "   Template timestamp: $TIMESTAMP"
+                echo "   Current timestamp:  $CURRENT_TIMESTAMP"
+                
+                if [ "$TIMESTAMP" != "$CURRENT_TIMESTAMP" ]; then
+                    echo -e "${RED}⚠️  Timestamp mismatch detected!${NC}"
+                    echo "   This could be why the node rejects the solution"
+                fi
             fi
         else
             echo "   (blake3sum/b3sum not available, skipping verification)"
@@ -222,9 +233,23 @@ while true; do
         
         # Submit solution to node
         echo -e "${YELLOW}📤 Submitting solution...${NC}"
+        echo "   Submitting with timestamp: $TIMESTAMP"
+        
+        # WORKAROUND: Try without timestamp first (let node use current time)
+        echo "   Trying without timestamp (let node use current time)..."
         SUBMIT_RESULT=$(curl -s -X POST "${NODE_URL}/mining/submit" \
             -H "Content-Type: application/json" \
-            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
+            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\"}")
+        
+        SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
+        
+        # If that fails, try with original timestamp
+        if [ "$SUCCESS" != "true" ]; then
+            echo "   Retrying with template timestamp..."
+            SUBMIT_RESULT=$(curl -s -X POST "${NODE_URL}/mining/submit" \
+                -H "Content-Type: application/json" \
+                -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MUTATION_VECTOR\", \"timestamp\": $TIMESTAMP}")
+        fi
         
         SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
         MESSAGE=$(echo "$SUBMIT_RESULT" | jq -r .message)
