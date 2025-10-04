@@ -24,8 +24,8 @@ object DifficultyAdjustment {
   // Minimum and maximum difficulty bounds
   // MIN: Floor to prevent getting too hard for CPU
   // MAX: Cap at maximum value (easy mining) when hashrate is low
-  val MIN_DIFFICULTY: Long = 0x1d00ffffL  // Floor to keep CPU-mineable (valid coefficient)
-  val MAX_DIFFICULTY: Long = 0xffffffffL  // Maximum (easiest)
+  val MIN_DIFFICULTY: Long = 0x1d00ffffL  // Floor to keep CPU-mineable (exponent 29)
+  val MAX_DIFFICULTY: Long = 0x1f7fffffL  // Maximum valid (exponent 31, max coeff)
   
   // Per-block adjustment limits - very conservative to prevent oscillation
   // Smaller changes = more stable difficulty, less overshooting
@@ -102,8 +102,9 @@ object DifficultyAdjustment {
     // Inverted from typical intuition because lower bits = harder in PoW
     val newDifficulty = (currentDifficulty / adjustmentFactor).toLong
     
-    // Clamp to bounds (enforce difficulty floor)
-    val clampedDifficulty = Math.max(MIN_DIFFICULTY, Math.min(MAX_DIFFICULTY, newDifficulty))
+    // Validate and clamp to bounds
+    val validatedDifficulty = validateCompactBits(newDifficulty)
+    val clampedDifficulty = Math.max(MIN_DIFFICULTY, Math.min(MAX_DIFFICULTY, validatedDifficulty))
     
     // Difficulty adjustment logging
     val actualBlockTime = actualTimeMs / ADJUSTMENT_WINDOW
@@ -121,6 +122,35 @@ object DifficultyAdjustment {
     difficultyCache.put(currentHeight, clampedDifficulty)
     
     clampedDifficulty
+  }
+  
+  /**
+   * Validate and fix compact bits format
+   * Ensures exponent is in valid range (0x1d-0x1f for mining)
+   */
+  def validateCompactBits(bits: Long): Long = {
+    val exponent = (bits >> 24) & 0xFF
+    val coefficient = bits & 0x00FFFFFF
+    
+    // Valid exponent range for mining: 29 (0x1d) to 31 (0x1f)
+    val validExponent = if (exponent < 0x1d) {
+      0x1d  // Minimum (hardest reasonable)
+    } else if (exponent > 0x1f) {
+      0x1f  // Maximum (easiest)
+    } else {
+      exponent
+    }
+    
+    // Ensure coefficient is non-zero and within 24-bit range
+    val validCoefficient = if (coefficient == 0) {
+      0x00ffff  // Default safe coefficient
+    } else if (coefficient > 0xFFFFFF) {
+      0xFFFFFF  // Max 24-bit value
+    } else {
+      coefficient
+    }
+    
+    (validExponent << 24) | validCoefficient
   }
   
   /**
