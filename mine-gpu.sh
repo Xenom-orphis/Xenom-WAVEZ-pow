@@ -103,9 +103,10 @@ while true; do
         --gpu-brute 2>&1)
     
     CMD_EXIT_CODE=$?
-    echo "$RESULT"
-    if echo "$RESULT" | grep -q "FOUND"; then
-        MUTATION_VECTOR=$(echo "$RESULT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+    echo "$RESULT" | grep -q "SOLUTION FOUND"
+    if echo "$RESULT" | grep -q "SOLUTION FOUND"; then
+        # Extract mutation vector from the GPU output format
+        MUTATION_VECTOR=$(echo "$RESULT" | grep "Mutation vector:" | sed 's/.*Mutation vector: *\([a-f0-9]*\).*/\1/')
         echo "✅ Found solution: $MUTATION_VECTOR"
         
         # Submit the mined block
