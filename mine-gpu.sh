@@ -10,6 +10,8 @@ NODE_URL="${NODE_URL:-http://eu.losmuchachos.digital:36669}"
 MINER_BIN="./xenom-miner-rust/target/release/xenom-miner-rust"
 USE_GPU="${USE_GPU:-true}"
 MV_LEN="${MV_LEN:-16}"  # Same as mine.sh
+GPU_ID="${GPU_ID:-0}"
+MULTI_GPU="${MULTI_GPU:-false}"
 
 # Colors for output
 RED='\033[0;31m'
@@ -47,6 +49,11 @@ fi
 
 echo "🚀 Xenom GPU Miner"
 echo "Node: $NODE_URL"
+if [ "${MULTI_GPU:-false}" = "true" ]; then
+    echo "Multi-GPU: Enabled (auto-detect all GPUs)"
+else
+    echo "Single GPU: ${GPU_ID:-0}"
+fi
 echo ""
 
 # Mining loop
@@ -91,16 +98,31 @@ while true; do
     # GPU brute-force mode (force GPU, no verification)
     MINE_START=$(date +%s)
     
-    echo "⛏️  Mining with GPU only..."
+    # Enable multi-GPU if requested
+    if [ "${MULTI_GPU:-false}" = "true" ]; then
+        export MULTI_GPU=1
+        echo "⛏️  Mining with all available GPUs..."
+    else
+        echo "⛏️  Mining with GPU ${GPU_ID:-0}..."
+    fi
+    
     export SKIP_GPU_VERIFICATION=1
-    RESULT=$($MINER_BIN \
+    
+    # Build miner command
+    MINER_CMD="$MINER_BIN \
         --header-hex $HEADER_HEX \
         --bits-hex $DIFFICULTY \
         --mv-len $MV_LEN \
         --gpu \
-        --gpu-id 0 \
         --batches 40000 \
-        --gpu-brute 2>&1)
+        --gpu-brute"
+    
+    # Add GPU ID if not using multi-GPU
+    if [ "${MULTI_GPU:-false}" != "true" ]; then
+        MINER_CMD="$MINER_CMD --gpu-id ${GPU_ID:-0}"
+    fi
+    
+    RESULT=$($MINER_CMD 2>&1)
     
     CMD_EXIT_CODE=$?
     echo "$RESULT" | grep -q "SOLUTION FOUND"
