@@ -108,19 +108,33 @@ while true; do
     
     export SKIP_GPU_VERIFICATION=1
     
-    # Build miner command
-    MINER_CMD="$MINER_BIN \
-        --header-hex $HEADER_HEX \
-        --bits-hex $DIFFICULTY \
-        --mv-len $MV_LEN \
-        --gpu \
-        --gpu-id 0 \
-        --batches 40000 \
-        --gpu-brute"
+    # Debug: Show GPU detection
+    if [ "${MULTI_GPU:-false}" = "true" ]; then
+        echo "🔍 Debug: MULTI_GPU=1, no --gpu-id specified (auto-detect mode)"
+    else
+        echo "🔍 Debug: Single GPU mode, --gpu-id ${GPU_ID:-0}"
+    fi
     
-    # Add GPU ID if not using multi-GPU
-    if [ "${MULTI_GPU:-false}" != "true" ]; then
-        MINER_CMD="$MINER_CMD --gpu-id ${GPU_ID:-0}"
+    # Build miner command
+    if [ "${MULTI_GPU:-false}" = "true" ]; then
+        # Multi-GPU mode: don't specify gpu-id, let it default to 0 for auto-detection
+        MINER_CMD="$MINER_BIN \
+            --header-hex $HEADER_HEX \
+            --bits-hex $DIFFICULTY \
+            --mv-len $MV_LEN \
+            --gpu \
+            --batches 40000 \
+            --gpu-brute"
+    else
+        # Single GPU mode: specify the GPU ID
+        MINER_CMD="$MINER_BIN \
+            --header-hex $HEADER_HEX \
+            --bits-hex $DIFFICULTY \
+            --mv-len $MV_LEN \
+            --gpu \
+            --gpu-id ${GPU_ID:-0} \
+            --batches 40000 \
+            --gpu-brute"
     fi
     
     RESULT=$($MINER_CMD 2>&1)
