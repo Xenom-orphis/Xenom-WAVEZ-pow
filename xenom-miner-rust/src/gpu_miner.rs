@@ -326,8 +326,8 @@ impl GpuMiner {
             // Get results
             self.device.dtoh_sync_copy_into(&d_fitness, &mut host_fitness).ok()?;
             
-            // Verify on first batch
-            if batch_idx == 0 {
+            // Skip GPU Blake3 verification entirely if requested
+            if batch_idx == 0 && std::env::var("SKIP_GPU_VERIFICATION").is_err() {
                 let mut gpu_hashes = vec![0u8; self.population_size * 32];
                 self.device.dtoh_sync_copy_into(&d_hashes, &mut gpu_hashes).ok()?;
                 
@@ -350,14 +350,11 @@ impl GpuMiner {
                 }
                 
                 if !all_match {
-                    if std::env::var("SKIP_GPU_VERIFICATION").is_ok() {
-                        eprintln!("⚠️  GPU Blake3 mismatch - SKIPPING verification (SKIP_GPU_VERIFICATION=1)");
-                        // Continue with GPU despite mismatch
-                    } else {
-                        eprintln!("⚠️  GPU Blake3 mismatch - falling back to CPU");
-                        // Continue with CPU fallback on mismatch
-                    }
+                    eprintln!("⚠️  GPU Blake3 mismatch - falling back to CPU");
+                    // Continue with CPU fallback on mismatch
                 }
+            } else if batch_idx == 0 {
+                eprintln!("🔄 GPU Blake3 verification skipped (SKIP_GPU_VERIFICATION=1)");
             }
             
             // Check for solution - use CPU verification if GPU Blake3 is buggy
