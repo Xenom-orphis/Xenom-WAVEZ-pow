@@ -114,6 +114,7 @@ while true; do
         --bits-hex $DIFFICULTY \
         --mv-len $MV_LEN \
         --gpu \
+        --gpu-id 0 \
         --batches 40000 \
         --gpu-brute"
     
