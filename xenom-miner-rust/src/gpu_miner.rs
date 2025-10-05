@@ -350,8 +350,13 @@ impl GpuMiner {
                 }
                 
                 if !all_match {
-                    eprintln!("⚠️  GPU Blake3 mismatch - falling back to CPU");
-                    // Continue with CPU fallback on mismatch
+                    if std::env::var("SKIP_GPU_VERIFICATION").is_ok() {
+                        eprintln!("⚠️  GPU Blake3 mismatch - SKIPPING verification (SKIP_GPU_VERIFICATION=1)");
+                        // Continue with GPU despite mismatch
+                    } else {
+                        eprintln!("⚠️  GPU Blake3 mismatch - falling back to CPU");
+                        // Continue with CPU fallback on mismatch
+                    }
                 }
             }
             

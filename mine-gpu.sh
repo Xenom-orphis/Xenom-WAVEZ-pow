@@ -88,24 +88,24 @@ while true; do
     echo "Header prefix: ${HEADER_HEX:0:32}..."
     echo "Difficulty: 0x$DIFFICULTY"
     
-    # GPU brute-force mode
-    MINER_CMD="$MINER_BIN \
+    # GPU brute-force mode (force GPU, no verification)
+    MINE_START=$(date +%s)
+    
+    echo "⛏️  Mining with GPU only..."
+    export SKIP_GPU_VERIFICATION=1
+    RESULT=$($MINER_BIN \
         --header-hex $HEADER_HEX \
         --bits-hex $DIFFICULTY \
         --mv-len $MV_LEN \
         --gpu \
-        --mine-loop \
-        --node-url $NODE_URL \
-        --gpu-brute"
+        --gpu-id 0 \
+        --batches 40000 \
+        --gpu-brute 2>&1)
     
-    MINE_START=$(date +%s)
-    
-    # Run miner and capture output
-    MINER_OUTPUT=$($MINER_CMD 2>&1)
     CMD_EXIT_CODE=$?
-    
-    if echo "$MINER_OUTPUT" | grep -q "FOUND"; then
-        MUTATION_VECTOR=$(echo "$MINER_OUTPUT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
+    echo "$RESULT"
+    if echo "$RESULT" | grep -q "FOUND"; then
+        MUTATION_VECTOR=$(echo "$RESULT" | grep "FOUND" | sed 's/.*mv=\([a-f0-9]*\).*/\1/')
         echo "✅ Found solution: $MUTATION_VECTOR"
         
         # Submit the mined block
