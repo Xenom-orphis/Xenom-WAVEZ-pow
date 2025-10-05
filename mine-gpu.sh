@@ -52,6 +52,8 @@ echo "Node: $NODE_URL"
 echo "🔍 Debug: MULTI_GPU variable = '${MULTI_GPU:-false}'"
 if [ "${MULTI_GPU:-false}" = "true" ]; then
     echo "Multi-GPU: Enabled (auto-detect all GPUs)"
+    # Set environment variable once for the entire session
+    export MULTI_GPU=1
 else
     echo "Single GPU: ${GPU_ID:-0}"
 fi
@@ -99,9 +101,8 @@ while true; do
     # GPU brute-force mode (force GPU, no verification)
     MINE_START=$(date +%s)
     
-    # Enable multi-GPU if requested
-    if [ "${MULTI_GPU:-false}" = "true" ]; then
-        export MULTI_GPU=1
+    # Check multi-GPU mode (already set at startup)
+    if [ "${MULTI_GPU}" = "1" ]; then
         echo "⛏️  Mining with all available GPUs..."
         echo "🔍 Debug: MULTI_GPU=1, no --gpu-id specified (auto-detect mode)"
     else
@@ -112,7 +113,7 @@ while true; do
     export SKIP_GPU_VERIFICATION=1
     
     # Build miner command
-    if [ "${MULTI_GPU:-false}" = "true" ]; then
+    if [ "${MULTI_GPU}" = "1" ]; then
         # Multi-GPU mode: don't specify gpu-id, let it default to 0 for auto-detection
         MINER_CMD="$MINER_BIN \
             --header-hex $HEADER_HEX \
