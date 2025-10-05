@@ -49,6 +49,7 @@ fi
 
 echo "🚀 Xenom GPU Miner"
 echo "Node: $NODE_URL"
+echo "🔍 Debug: MULTI_GPU variable = '${MULTI_GPU:-false}'"
 if [ "${MULTI_GPU:-false}" = "true" ]; then
     echo "Multi-GPU: Enabled (auto-detect all GPUs)"
 else
@@ -102,18 +103,13 @@ while true; do
     if [ "${MULTI_GPU:-false}" = "true" ]; then
         export MULTI_GPU=1
         echo "⛏️  Mining with all available GPUs..."
+        echo "🔍 Debug: MULTI_GPU=1, no --gpu-id specified (auto-detect mode)"
     else
         echo "⛏️  Mining with GPU ${GPU_ID:-0}..."
+        echo "🔍 Debug: Single GPU mode, --gpu-id ${GPU_ID:-0}"
     fi
     
     export SKIP_GPU_VERIFICATION=1
-    
-    # Debug: Show GPU detection
-    if [ "${MULTI_GPU:-false}" = "true" ]; then
-        echo "🔍 Debug: MULTI_GPU=1, no --gpu-id specified (auto-detect mode)"
-    else
-        echo "🔍 Debug: Single GPU mode, --gpu-id ${GPU_ID:-0}"
-    fi
     
     # Build miner command
     if [ "${MULTI_GPU:-false}" = "true" ]; then
