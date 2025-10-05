@@ -360,21 +360,40 @@ impl GpuMiner {
                 }
             }
             
-            // Check for GPU solution
-            if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f > 100000.0) {
-                let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
-                
-                // Always verify with CPU
-                let mut input = header_prefix.to_vec();
-                input.extend_from_slice(&mv);
-                let cpu_hash = blake3::hash(&input);
-                let hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
-                
-                if hash_uint <= *target {
-                    let mut hash = [0u8; 32];
-                    hash.copy_from_slice(cpu_hash.as_bytes());
-                    eprintln!("✅ GPU found solution, CPU verified in batch {}/{}", batch_idx + 1, batches);
-                    return Some((mv, hash));
+            // Check for solution - use CPU verification if GPU Blake3 is buggy
+            if std::env::var("SKIP_GPU_VERIFICATION").is_ok() {
+                // GPU Blake3 is buggy, check every mutation vector with CPU
+                for i in 0..self.population_size {
+                    let mv = host_pop[i * self.mv_len..(i + 1) * self.mv_len].to_vec();
+                    let mut input = header_prefix.to_vec();
+                    input.extend_from_slice(&mv);
+                    let cpu_hash = blake3::hash(&input);
+                    let hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
+                    
+                    if hash_uint <= *target {
+                        let mut hash = [0u8; 32];
+                        hash.copy_from_slice(cpu_hash.as_bytes());
+                        eprintln!("✅ Solution found via CPU verification in batch {}/{}", batch_idx + 1, batches);
+                        return Some((mv, hash));
+                    }
+                }
+            } else {
+                // Use GPU fitness (normal mode)
+                if let Some((idx, _)) = host_fitness.iter().enumerate().find(|(_, &f)| f > 100000.0) {
+                    let mv = host_pop[idx * self.mv_len..(idx + 1) * self.mv_len].to_vec();
+                    
+                    // Always verify with CPU
+                    let mut input = header_prefix.to_vec();
+                    input.extend_from_slice(&mv);
+                    let cpu_hash = blake3::hash(&input);
+                    let hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
+                    
+                    if hash_uint <= *target {
+                        let mut hash = [0u8; 32];
+                        hash.copy_from_slice(cpu_hash.as_bytes());
+                        eprintln!("✅ GPU found solution, CPU verified in batch {}/{}", batch_idx + 1, batches);
+                        return Some((mv, hash));
+                    }
                 }
             }
             
