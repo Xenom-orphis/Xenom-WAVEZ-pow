@@ -453,6 +453,9 @@ impl GpuMiner {
             shared_mem_bytes: 0,
         };
 
+        // Allocate device memory for solution hash
+        let mut d_solution_hash = self.device.alloc_zeros::<u8>(32).ok()?;
+
         eprintln!("🚀 Starting GPU brute-force: {} threads, {} iterations each", 
                  total_threads, iterations_per_thread);
         eprintln!("🎯 Target range: {} to {}", start_nonce, start_nonce + max_nonces);
@@ -471,54 +474,44 @@ impl GpuMiner {
                 &mut d_solution_found, // uint8_t* solution_found
                 &mut d_solution_nonce, // uint64_t* solution_nonce
                 iterations_per_thread, // uint32_t max_iterations
+                &mut d_solution_hash,  // uint8_t* solution_hash
             )).ok()?;
         }
 
         // Check results
         let mut solution_found = vec![0u8; 1];
         let mut solution_nonce = vec![0u64; 1];
+        let mut solution_hash = vec![0u8; 32];
         
         self.device.dtoh_sync_copy_into(&d_solution_found, &mut solution_found).ok()?;
         
         if solution_found[0] != 0 {
             self.device.dtoh_sync_copy_into(&d_solution_nonce, &mut solution_nonce).ok()?;
+            self.device.dtoh_sync_copy_into(&d_solution_hash, &mut solution_hash).ok()?;
             let nonce = solution_nonce[0];
             
             eprintln!("✅ GPU brute-force found solution at nonce: {}", nonce);
             
-            // Verify solution on CPU
-            let mut input = header_prefix.to_vec();
-            // Append nonce as 8 bytes (little-endian)
-            for i in 0..8 {
-                input.push(((nonce >> (i * 8)) & 0xFF) as u8);
+            // GPU has already computed and verified the hash - use it directly!
+            let mut hash = [0u8; 32];
+            hash.copy_from_slice(&solution_hash);
+            
+            // Return nonce as mutation vector (respecting mv_len)
+            let mut nonce_bytes = vec![0u8; self.mv_len];
+            // Fill first 8 bytes with nonce (little-endian)
+            for i in 0..8.min(self.mv_len) {
+                nonce_bytes[i] = ((nonce >> (i * 8)) & 0xFF) as u8;
+            }
+            // Fill remaining bytes with random data if mv_len > 8
+            if self.mv_len > 8 {
+                use rand::Rng;
+                let mut rng = rand::thread_rng();
+                for i in 8..self.mv_len {
+                    nonce_bytes[i] = rng.gen();
+                }
             }
             
-            let cpu_hash = blake3::hash(&input);
-            let hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
-            
-            if hash_uint <= *target {
-                let mut hash = [0u8; 32];
-                hash.copy_from_slice(cpu_hash.as_bytes());
-                
-                // Return nonce as mutation vector (respecting mv_len)
-                let mut nonce_bytes = vec![0u8; self.mv_len];
-                // Fill first 8 bytes with nonce (little-endian)
-                for i in 0..8.min(self.mv_len) {
-                    nonce_bytes[i] = ((nonce >> (i * 8)) & 0xFF) as u8;
-                }
-                // Fill remaining bytes with random data if mv_len > 8
-                if self.mv_len > 8 {
-                    use rand::Rng;
-                    let mut rng = rand::thread_rng();
-                    for i in 8..self.mv_len {
-                        nonce_bytes[i] = rng.gen();
-                    }
-                }
-                
-                return Some((nonce_bytes, hash));
-            } else {
-                eprintln!("⚠️  GPU solution failed CPU verification");
-            }
+            return Some((nonce_bytes, hash));
         }
 
         None

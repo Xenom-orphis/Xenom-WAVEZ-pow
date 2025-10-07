@@ -376,7 +376,8 @@ extern "C" __global__ void blake3_brute_force(
     const uint8_t *target_bytes,
     uint8_t *solution_found,
     uint64_t *solution_nonce,
-    uint32_t max_iterations
+    uint32_t max_iterations,
+    uint8_t *solution_hash
 ) {
     uint32_t idx = blockIdx.x * blockDim.x + threadIdx.x;
     uint64_t nonce = start_nonce + idx;
@@ -418,6 +419,10 @@ extern "C" __global__ void blake3_brute_force(
             // Atomic update to prevent race conditions
             if (atomicCAS((unsigned int*)solution_found, 0, 1) == 0) {
                 *solution_nonce = nonce;
+                // Copy hash to output
+                for (int i = 0; i < 32; i++) {
+                    solution_hash[i] = hash[i];
+                }
             }
             return;
         }
