@@ -24,7 +24,7 @@ fi
 # Build the miner binary
 echo "🔨 Building Xenom miner binary..."
 cd "$PARENT_DIR/xenom-miner-rust"
-cargo build --release
+cargo build --release --features=cuda
 cd "$PARENT_DIR"
 
 # Check if binary was built successfully
