@@ -29,13 +29,14 @@ cp -r "$PARENT_DIR/xenom-miner-rust" "$SCRIPT_DIR/"
 echo "🔧 Setting execute permissions..."
 chmod +x "$SCRIPT_DIR"/*.sh
 
-# Create the archive
+# Create the archive with correct directory name
 echo "📦 Creating archive: $ARCHIVE_NAME"
 cd "$PARENT_DIR"
 tar -zcvf "$ARCHIVE_NAME" \
     --exclude="hiveos-xenom-miner/xenom-miner-rust/target" \
     --exclude="hiveos-xenom-miner/.git" \
     --exclude="hiveos-xenom-miner/*.tar.gz" \
+    --transform "s/^hiveos-xenom-miner/$PACKAGE_NAME/" \
     hiveos-xenom-miner
 
 # Calculate file size

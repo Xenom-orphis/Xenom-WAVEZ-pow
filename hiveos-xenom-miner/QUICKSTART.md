@@ -19,6 +19,7 @@ ssh user@YOUR_RIG_IP
 cd /tmp
 tar -xzf xenom-miner-1.0.0.tar.gz -C /hive/miners/custom/
 chmod +x /hive/miners/custom/xenom-miner/*.sh
+ls -la /hive/miners/custom/xenom-miner/  # Verify installation
 ```
 
 ### 3. Configure in HiveOS Dashboard
