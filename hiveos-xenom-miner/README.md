@@ -6,9 +6,12 @@ This is a HiveOS custom miner package for the Xenom Proof-of-Work blockchain.
 
 - ✅ Full HiveOS integration with stats reporting
 - ✅ Pre-compiled binary (no build required on HiveOS)
+- ✅ **GPU mining support** (NVIDIA CUDA) with auto-detection
+- ✅ Multi-GPU support
+- ✅ CPU mining fallback
 - ✅ Configurable mining address
 - ✅ Block submission tracking (accepted/rejected)
-- ✅ Multi-threaded mining support
+- ✅ Multi-threaded CPU mining support
 
 ## Installation
 
@@ -85,15 +88,32 @@ The miner accepts the following configuration through HiveOS:
   {
     "miner_address": "your_address",
     "threads": 0,
-    "mv_len": 16
+    "mv_len": 16,
+    "use_gpu": true,
+    "gpu_id": 0,
+    "multi_gpu": false,
+    "gpu_batches": 40000
   }
   ```
+
+### Configuration Options Explained
+
+**CPU Mining:**
+- `threads`: Number of CPU threads (0 = auto-detect all cores)
+- `mv_len`: Mutation vector length (default: 16)
+
+**GPU Mining:**
+- `use_gpu`: Enable GPU mining (default: auto-detected if NVIDIA GPU present)
+- `gpu_id`: Which GPU to use (0-based index, default: 0)
+- `multi_gpu`: Enable all GPUs (default: false, auto-enabled if multiple GPUs detected)
+- `gpu_batches`: Number of GPU batches per iteration (default: 40000)
 
 ### Default Values
 
 - **Node URL:** `http://eu.losmuchachos.digital:36669`
 - **Threads:** `0` (auto-detect CPU cores)
 - **MV Length:** `16`
+- **GPU:** Auto-detected (enabled if NVIDIA GPU found)
 - **Miner Address:** If not specified, rewards go to the node's wallet
 
 ## File Structure

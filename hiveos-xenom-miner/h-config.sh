@@ -19,11 +19,27 @@ if [[ ! -z $CUSTOM_TEMPLATE ]]; then
     MINER_ADDRESS="$CUSTOM_TEMPLATE"
 fi
 
+# Default values
+THREADS=0
+MV_LEN=16
+USE_GPU=false
+GPU_ID=0
+MULTI_GPU=false
+GPU_BATCHES=40000
+
 # User config can override settings (JSON format expected)
 if [[ ! -z $CUSTOM_USER_CONFIG ]]; then
     # Try to parse JSON user config
     MINER_ADDRESS=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.miner_address // empty' 2>/dev/null)
     [[ -z $MINER_ADDRESS ]] && MINER_ADDRESS=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.address // empty' 2>/dev/null)
+    
+    # Parse GPU settings
+    THREADS=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.threads // 0' 2>/dev/null)
+    MV_LEN=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.mv_len // 16' 2>/dev/null)
+    USE_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.use_gpu // false' 2>/dev/null)
+    GPU_ID=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.gpu_id // 0' 2>/dev/null)
+    MULTI_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.multi_gpu // false' 2>/dev/null)
+    GPU_BATCHES=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.gpu_batches // 40000' 2>/dev/null)
 fi
 
 # Create config file
@@ -31,8 +47,12 @@ cat > $CUSTOM_CONFIG_FILENAME <<EOF
 # Xenom Miner Configuration
 NODE_URL=$NODE_URL
 MINER_ADDRESS=$MINER_ADDRESS
-THREADS=0
-MV_LEN=16
+THREADS=$THREADS
+MV_LEN=$MV_LEN
+USE_GPU=$USE_GPU
+GPU_ID=$GPU_ID
+MULTI_GPU=$MULTI_GPU
+GPU_BATCHES=$GPU_BATCHES
 EOF
 
 echo "Xenom miner config generated:"

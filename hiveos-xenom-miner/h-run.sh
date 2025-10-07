@@ -38,6 +38,12 @@ echo "Node URL: $NODE_URL" | tee -a $LOG_FILE
 echo "Miner Address: ${MINER_ADDRESS:-Node wallet (default)}" | tee -a $LOG_FILE
 echo "Threads: $THREADS" | tee -a $LOG_FILE
 echo "MV Length: $MV_LEN" | tee -a $LOG_FILE
+echo "GPU Enabled: ${USE_GPU:-false}" | tee -a $LOG_FILE
+if [ "${USE_GPU}" = "true" ]; then
+    echo "GPU ID: ${GPU_ID:-0}" | tee -a $LOG_FILE
+    echo "Multi-GPU: ${MULTI_GPU:-false}" | tee -a $LOG_FILE
+    echo "GPU Batches: ${GPU_BATCHES:-40000}" | tee -a $LOG_FILE
+fi
 echo "===========================" | tee -a $LOG_FILE
 
 # Export variables for the mining script
@@ -46,6 +52,10 @@ export MINER_ADDRESS
 export MINER_BIN
 export THREADS
 export MV_LEN
+export USE_GPU
+export GPU_ID
+export MULTI_GPU
+export GPU_BATCHES
 
 # Run the mining loop
 exec $MINER_DIR/mine-loop.sh 2>&1 | tee -a $LOG_FILE
