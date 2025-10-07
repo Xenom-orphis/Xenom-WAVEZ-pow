@@ -19,23 +19,17 @@ fi
 source $CUSTOM_CONFIG_FILENAME
 
 MINER_DIR=$(dirname $CUSTOM_CONFIG_FILENAME)
-MINER_BIN="$MINER_DIR/xenom-miner-rust/target/release/xenom-miner-rust"
+MINER_BIN="$MINER_DIR/bin/xenom-miner-rust"
 LOG_FILE="${CUSTOM_LOG_BASENAME}.log"
 
 # Create log directory
 mkdir -p $(dirname $LOG_FILE)
 
-# Check if miner binary exists, if not build it
+# Check if miner binary exists
 if [ ! -f "$MINER_BIN" ]; then
-    echo "Building Xenom miner..." | tee -a $LOG_FILE
-    cd $MINER_DIR/xenom-miner-rust
-    cargo build --release 2>&1 | tee -a $LOG_FILE
-    cd $MINER_DIR
-    
-    if [ ! -f "$MINER_BIN" ]; then
-        echo "Failed to build miner binary" | tee -a $LOG_FILE
-        exit 1
-    fi
+    echo "❌ Error: Miner binary not found at $MINER_BIN" | tee -a $LOG_FILE
+    echo "Please ensure the package was extracted correctly." | tee -a $LOG_FILE
+    exit 1
 fi
 
 # Show configuration

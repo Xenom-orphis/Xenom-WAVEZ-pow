@@ -5,7 +5,7 @@ This is a HiveOS custom miner package for the Xenom Proof-of-Work blockchain.
 ## Features
 
 - ✅ Full HiveOS integration with stats reporting
-- ✅ Automatic miner binary building
+- ✅ Pre-compiled binary (no build required on HiveOS)
 - ✅ Configurable mining address
 - ✅ Block submission tracking (accepted/rejected)
 - ✅ Multi-threaded mining support
@@ -19,11 +19,8 @@ This is a HiveOS custom miner package for the Xenom Proof-of-Work blockchain.
    # On your development machine
    cd /path/to/Waves_Pow
    
-   # Copy the Rust miner source into the package
-   cp -r xenom-miner-rust hiveos-xenom-miner/
-   
-   # Create the archive
-   tar -zcvf xenom-miner-1.0.0.tar.gz hiveos-xenom-miner
+   # Run the packaging script (builds binary and creates archive)
+   ./hiveos-xenom-miner/PACKAGE.sh
    ```
 
 2. **Upload to your HiveOS rig:**
@@ -108,7 +105,8 @@ xenom-miner/
 ├── h-run.sh             # Miner startup script
 ├── h-stats.sh           # Stats reporting script
 ├── mine-loop.sh         # Main mining loop
-├── xenom-miner-rust/    # Rust miner source code
+├── bin/
+│   └── xenom-miner-rust # Pre-compiled miner binary
 └── README.md            # This file
 ```
 
@@ -137,19 +135,20 @@ tail -f /var/log/miner/custom/xenom-miner/xenom.log
 
 ### Miner won't start
 
-1. Check if Rust and Cargo are installed:
+1. Check if binary exists:
    ```bash
-   cargo --version
-   ```
-   If not, install:
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   source $HOME/.cargo/env
+   ls -la /hive/miners/custom/xenom-miner/bin/xenom-miner-rust
    ```
 
 2. Check logs for errors:
    ```bash
    tail -100 /var/log/miner/custom/xenom-miner/xenom.log
+   ```
+
+3. Verify permissions:
+   ```bash
+   chmod +x /hive/miners/custom/xenom-miner/bin/xenom-miner-rust
+   chmod +x /hive/miners/custom/xenom-miner/*.sh
    ```
 
 ### No blocks found
@@ -158,11 +157,11 @@ tail -f /var/log/miner/custom/xenom-miner/xenom.log
 - Verify the node is running and synced
 - Check network connectivity: `curl http://your-node-url/mining/template`
 
-### Build failures
+### Binary not found
 
-- Ensure you have enough disk space
-- Check that the `xenom-miner-rust` directory is present
-- Manually build: `cd /hive/miners/custom/xenom-miner/xenom-miner-rust && cargo build --release`
+- Ensure the package was extracted correctly
+- Re-download and extract the package
+- Check that `/hive/miners/custom/xenom-miner/bin/` directory exists
 
 ## Support
 

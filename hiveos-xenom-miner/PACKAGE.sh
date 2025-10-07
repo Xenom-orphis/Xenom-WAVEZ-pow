@@ -21,21 +21,36 @@ if [ ! -d "$PARENT_DIR/xenom-miner-rust" ]; then
     exit 1
 fi
 
-# Copy the Rust miner source into the package
-echo "📦 Copying Rust miner source..."
-cp -r "$PARENT_DIR/xenom-miner-rust" "$SCRIPT_DIR/"
+# Build the miner binary
+echo "🔨 Building Xenom miner binary..."
+cd "$PARENT_DIR/xenom-miner-rust"
+cargo build --release
+cd "$PARENT_DIR"
+
+# Check if binary was built successfully
+BINARY_PATH="$PARENT_DIR/xenom-miner-rust/target/release/xenom-miner-rust"
+if [ ! -f "$BINARY_PATH" ]; then
+    echo "❌ Error: Failed to build miner binary"
+    exit 1
+fi
+
+# Create bin directory in package and copy binary
+echo "📦 Copying compiled binary..."
+mkdir -p "$SCRIPT_DIR/bin"
+cp "$BINARY_PATH" "$SCRIPT_DIR/bin/"
+chmod +x "$SCRIPT_DIR/bin/xenom-miner-rust"
 
 # Set execute permissions on shell scripts
 echo "🔧 Setting execute permissions..."
 chmod +x "$SCRIPT_DIR"/*.sh
 
-# Create the archive with correct directory name
+# Create the archive with correct directory name (excluding Rust source)
 echo "📦 Creating archive: $ARCHIVE_NAME"
 cd "$PARENT_DIR"
 tar -zcvf "$ARCHIVE_NAME" \
-    --exclude="hiveos-xenom-miner/xenom-miner-rust/target" \
     --exclude="hiveos-xenom-miner/.git" \
     --exclude="hiveos-xenom-miner/*.tar.gz" \
+    --exclude="hiveos-xenom-miner/xenom-miner-rust" \
     --transform "s/^hiveos-xenom-miner/$PACKAGE_NAME/" \
     hiveos-xenom-miner
 
