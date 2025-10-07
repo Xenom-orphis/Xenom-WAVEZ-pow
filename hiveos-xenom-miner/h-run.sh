@@ -2,7 +2,17 @@
 
 cd `dirname $0`
 
-[[ -z $CUSTOM_CONFIG_FILENAME ]] && echo -e "${YELLOW}CUSTOM_CONFIG_FILENAME is empty${NOCOLOR}" && exit 1
+# Set defaults if HiveOS variables are not set
+if [[ -z $CUSTOM_CONFIG_FILENAME ]]; then
+    CUSTOM_CONFIG_FILENAME="/hive/miners/custom/xenom-miner/xenom.conf"
+    echo "Using default config file: $CUSTOM_CONFIG_FILENAME"
+fi
+
+if [[ -z $CUSTOM_LOG_BASENAME ]]; then
+    CUSTOM_LOG_BASENAME="/var/log/miner/custom/xenom-miner/xenom"
+    echo "Using default log file: $CUSTOM_LOG_BASENAME"
+fi
+
 [[ ! -f $CUSTOM_CONFIG_FILENAME ]] && echo -e "${RED}Custom config file $CUSTOM_CONFIG_FILENAME not found${NOCOLOR}" && exit 1
 
 # Source the config

@@ -2,7 +2,12 @@
 # This script generates the miner configuration file
 # HiveOS variables available: $CUSTOM_URL, $CUSTOM_TEMPLATE, $CUSTOM_USER_CONFIG, etc.
 
-[[ -z $CUSTOM_CONFIG_FILENAME ]] && echo -e "${YELLOW}CUSTOM_CONFIG_FILENAME is empty${NOCOLOR}" && return 1
+# Set default config filename if not provided by HiveOS
+if [[ -z $CUSTOM_CONFIG_FILENAME ]]; then
+    CUSTOM_CONFIG_FILENAME="/hive/miners/custom/xenom-miner/xenom.conf"
+    echo "Using default config file: $CUSTOM_CONFIG_FILENAME"
+fi
+
 [[ -z $CUSTOM_URL ]] && echo -e "${YELLOW}CUSTOM_URL is empty${NOCOLOR}" && return 1
 
 # Parse pool URL (node URL)
