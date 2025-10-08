@@ -386,18 +386,23 @@ extern "C" __global__ void blake3_brute_force(
     uint8_t hash[32];
     
     for (uint32_t iter = 0; iter < max_iterations && !(*solution_found); iter++) {
-        // Build input: header + nonce (little-endian)
+        // Build input: header + mutation vector (16 bytes: nonce + padding)
         for (uint32_t i = 0; i < header_len; i++) {
             buffer[i] = header_prefix[i];
         }
         
-        // Append nonce as 8 bytes (little-endian)
+        // Append nonce as first 8 bytes of mutation vector (little-endian)
         for (int i = 0; i < 8; i++) {
             buffer[header_len + i] = (uint8_t)((nonce >> (i * 8)) & 0xFF);
         }
         
+        // Append 8 zero bytes to make 16-byte mutation vector
+        for (int i = 8; i < 16; i++) {
+            buffer[header_len + i] = 0;
+        }
+        
         // Hash the input
-        uint32_t total_len = header_len + 8;
+        uint32_t total_len = header_len + 16;
         if (total_len <= 64) {
             blake3_hash_single_block(buffer, total_len, hash);
         } else {

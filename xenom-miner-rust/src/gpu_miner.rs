@@ -510,10 +510,15 @@ impl GpuMiner {
             hash.copy_from_slice(&solution_hash);
             
             // Debug: verify the solution on CPU
-            let mut input = pow_header_prefix.to_vec();
+            // Build the full mutation vector (16 bytes: nonce + zeros to match GPU)
+            let mut mutation_vector = vec![0u8; 16];
             for i in 0..8 {
-                input.push(((nonce >> (i * 8)) & 0xFF) as u8);
+                mutation_vector[i] = ((nonce >> (i * 8)) & 0xFF) as u8;
             }
+            // Remaining 8 bytes are zeros (matching GPU kernel)
+            
+            let mut input = pow_header_prefix.to_vec();
+            input.extend_from_slice(&mutation_vector);
             let cpu_hash = blake3::hash(&input);
             let cpu_hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
             
@@ -529,22 +534,8 @@ impl GpuMiner {
             eprintln!("   GPU hash <= target? {}", num_bigint::BigUint::from_bytes_be(&hash) <= *target);
             eprintln!("   CPU hash <= target? {}", cpu_hash_uint <= *target);
             
-            // Return nonce as mutation vector (respecting mv_len)
-            let mut nonce_bytes = vec![0u8; self.mv_len];
-            // Fill first 8 bytes with nonce (little-endian)
-            for i in 0..8.min(self.mv_len) {
-                nonce_bytes[i] = ((nonce >> (i * 8)) & 0xFF) as u8;
-            }
-            // Fill remaining bytes with random data if mv_len > 8
-            if self.mv_len > 8 {
-                use rand::Rng;
-                let mut rng = rand::thread_rng();
-                for i in 8..self.mv_len {
-                    nonce_bytes[i] = rng.gen();
-                }
-            }
-            
-            return Some((nonce_bytes, hash));
+            // Return the mutation vector we used (same as what we hashed)
+            return Some((mutation_vector, hash));
         }
 
         None
