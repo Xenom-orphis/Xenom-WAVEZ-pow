@@ -437,7 +437,7 @@ impl GpuMiner {
         }
 
         let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
-        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes).ok()?;
+        let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes.clone()).ok()?;
         let mut d_solution_found: CudaSlice<u8> = self.device.alloc_zeros(1).ok()?;
         let mut d_solution_nonce: CudaSlice<u64> = self.device.alloc_zeros(1).ok()?;
 
