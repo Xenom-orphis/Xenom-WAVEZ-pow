@@ -425,18 +425,11 @@ impl GpuMiner {
             return self.mine_bruteforce_gpu(header_prefix, target, (max_nonces / self.population_size as u64) as usize);
         }
 
-        // CRITICAL FIX: The header_prefix from the node includes extra fields that should NOT be in PoW hash!
-        // PoW hash should only include: version(4) + prevHash(32) + merkleRoot(32) + timestamp(8) = 76 bytes
-        // Then we append the mutation vector (which contains our nonce)
-        // The node sends: version(4) + prevHash(32) + merkleRoot(32) + timestamp(8) + difficultyBits(8) + nonce(8) + mvLen(4) = 96 bytes
-        // We need to strip off the last 20 bytes (difficultyBits + nonce + mvLen)
-        let pow_header_prefix = if header_prefix.len() == 96 {
-            eprintln!("⚠️  Stripping last 20 bytes from 96-byte header (removing difficultyBits, nonce, mvLen)");
-            &header_prefix[..76]
-        } else {
-            eprintln!("⚠️  Using full header prefix (length: {})", header_prefix.len());
-            header_prefix
-        };
+        // The node validates by hashing the FULL serialized header (all fields + mutation vector)
+        // The header_prefix is 96 bytes: version(4) + prevHash(32) + merkleRoot(32) + timestamp(8) + 
+        //                                 difficultyBits(8) + nonce(8) + mvLen(4) = 96 bytes
+        // We append the 16-byte mutation vector to make the full header for hashing
+        let pow_header_prefix = header_prefix;
 
         // Prepare target bytes on device
         let mut target_bytes = target.to_bytes_be();
@@ -524,7 +517,8 @@ impl GpuMiner {
             
             eprintln!("🔍 Debug verification:");
             eprintln!("   Nonce: {} (0x{:016x})", nonce, nonce);
-            eprintln!("   PoW header prefix len: {} (stripped from {})", pow_header_prefix.len(), header_prefix.len());
+            eprintln!("   Header prefix len: {}", pow_header_prefix.len());
+            eprintln!("   Total input len: {} (header + 16-byte MV)", input.len());
             eprintln!("   Input (first 32 bytes): {}", hex::encode(&input[..input.len().min(32)]));
             eprintln!("   Input (last 16 bytes): {}", hex::encode(&input[input.len().saturating_sub(16)..]));
             eprintln!("   GPU hash: {}", hex::encode(&hash));
