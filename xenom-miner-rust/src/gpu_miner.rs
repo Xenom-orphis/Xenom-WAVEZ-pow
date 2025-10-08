@@ -425,6 +425,19 @@ impl GpuMiner {
             return self.mine_bruteforce_gpu(header_prefix, target, (max_nonces / self.population_size as u64) as usize);
         }
 
+        // CRITICAL FIX: The header_prefix from the node includes extra fields that should NOT be in PoW hash!
+        // PoW hash should only include: version(4) + prevHash(32) + merkleRoot(32) + timestamp(8) = 76 bytes
+        // Then we append the mutation vector (which contains our nonce)
+        // The node sends: version(4) + prevHash(32) + merkleRoot(32) + timestamp(8) + difficultyBits(8) + nonce(8) + mvLen(4) = 96 bytes
+        // We need to strip off the last 20 bytes (difficultyBits + nonce + mvLen)
+        let pow_header_prefix = if header_prefix.len() == 96 {
+            eprintln!("⚠️  Stripping last 20 bytes from 96-byte header (removing difficultyBits, nonce, mvLen)");
+            &header_prefix[..76]
+        } else {
+            eprintln!("⚠️  Using full header prefix (length: {})", header_prefix.len());
+            header_prefix
+        };
+
         // Prepare target bytes on device
         let mut target_bytes = target.to_bytes_be();
         if target_bytes.len() < 32 {
@@ -436,12 +449,12 @@ impl GpuMiner {
             target_bytes = target_bytes[start..].to_vec();
         }
 
-        let d_header: CudaSlice<u8> = self.device.htod_copy(header_prefix.to_vec()).ok()?;
+        let d_header: CudaSlice<u8> = self.device.htod_copy(pow_header_prefix.to_vec()).ok()?;
         let d_target: CudaSlice<u8> = self.device.htod_copy(target_bytes.clone()).ok()?;
         let mut d_solution_found: CudaSlice<u8> = self.device.alloc_zeros(1).ok()?;
         let mut d_solution_nonce: CudaSlice<u64> = self.device.alloc_zeros(1).ok()?;
 
-        let header_len_u32 = header_prefix.len() as u32;
+        let header_len_u32 = pow_header_prefix.len() as u32;
         let threads_per_block = 256u32;
         let num_blocks = 1024u32; // Use many blocks for better GPU utilization
         let total_threads = threads_per_block * num_blocks;
@@ -497,7 +510,7 @@ impl GpuMiner {
             hash.copy_from_slice(&solution_hash);
             
             // Debug: verify the solution on CPU
-            let mut input = header_prefix.to_vec();
+            let mut input = pow_header_prefix.to_vec();
             for i in 0..8 {
                 input.push(((nonce >> (i * 8)) & 0xFF) as u8);
             }
@@ -506,7 +519,7 @@ impl GpuMiner {
             
             eprintln!("🔍 Debug verification:");
             eprintln!("   Nonce: {} (0x{:016x})", nonce, nonce);
-            eprintln!("   Header prefix len: {}", header_prefix.len());
+            eprintln!("   PoW header prefix len: {} (stripped from {})", pow_header_prefix.len(), header_prefix.len());
             eprintln!("   Input (first 32 bytes): {}", hex::encode(&input[..input.len().min(32)]));
             eprintln!("   Input (last 16 bytes): {}", hex::encode(&input[input.len().saturating_sub(16)..]));
             eprintln!("   GPU hash: {}", hex::encode(&hash));
