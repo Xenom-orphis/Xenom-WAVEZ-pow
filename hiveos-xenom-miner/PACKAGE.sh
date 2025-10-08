@@ -21,6 +21,9 @@ if [ ! -d "$PARENT_DIR/xenom-miner-rust" ]; then
     exit 1
 fi
 
+# Clean any previous bin directory
+rm -rf "$SCRIPT_DIR/bin"
+
 # Build the PTX file for CUDA kernels
 echo "🔨 Building CUDA PTX kernels..."
 cd "$PARENT_DIR/xenom-miner-rust"
@@ -61,12 +64,17 @@ fi
 echo "🔧 Setting execute permissions..."
 chmod +x "$SCRIPT_DIR"/*.sh
 
+# Clean up build artifacts before packaging
+echo "🧹 Cleaning up temporary files..."
+rm -rf "$SCRIPT_DIR/xenom-miner-rust"
+
 # Create the archive (exclude source, only include bin/)
 echo "📦 Creating archive: $ARCHIVE_NAME"
 cd "$PARENT_DIR"
 tar -zcvf "$ARCHIVE_NAME" \
     --exclude="hiveos-xenom-miner/.git" \
     --exclude="hiveos-xenom-miner/*.tar.gz" \
+    --exclude="hiveos-xenom-miner/xenom-miner-rust" \
     --transform "s/^hiveos-xenom-miner/$PACKAGE_NAME/" \
     hiveos-xenom-miner
 
