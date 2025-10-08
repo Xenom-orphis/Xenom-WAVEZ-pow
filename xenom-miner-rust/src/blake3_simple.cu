@@ -404,16 +404,20 @@ extern "C" __global__ void blake3_brute_force(
             blake3_hash_optimized(buffer, total_len, hash);
         }
         
-        // Check if hash meets target
+        // Check if hash meets target (hash <= target)
+        // Compare as big-endian: most significant byte first
         bool meets_target = true;
         for (int k = 0; k < 32; k++) {
             if (hash[k] < target_bytes[k]) {
-                break; // hash < target
+                meets_target = true;  // hash < target, definitely valid
+                break;
             } else if (hash[k] > target_bytes[k]) {
-                meets_target = false;
+                meets_target = false; // hash > target, invalid
                 break;
             }
+            // If equal, continue to next byte
         }
+        // If all bytes equal, hash == target, which is valid (meets_target stays true)
         
         if (meets_target) {
             // Atomic update to prevent race conditions
