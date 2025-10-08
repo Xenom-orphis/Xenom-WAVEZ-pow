@@ -187,26 +187,26 @@ fi
 [[ ${#gpu_bus[@]} -eq 0 ]] && gpu_bus=(0)
 
 # Build stats JSON using HiveOS standard method
-# Convert arrays to jq format - need to handle numeric values properly
-hs_array=$(printf '%s\n' "${gpu_hs[@]}" | jq -cs 'map(tonumber)')
-temp_array=$(printf '%s\n' "${gpu_temp[@]}" | jq -cs 'map(tonumber)')
-fan_array=$(printf '%s\n' "${gpu_fan[@]}" | jq -cs 'map(tonumber)')
-# Bus IDs are strings, wrap in quotes for jq
-bus_array=$(printf '"%s"\n' "${gpu_bus[@]}" | jq -cs '.')
+# Convert bash arrays to jq-compatible format
+hs_json=$(printf '%s\n' "${gpu_hs[@]}" | jq -cs 'map(tonumber)')
+temp_json=$(printf '%s\n' "${gpu_temp[@]}" | jq -cs 'map(tonumber)')
+fan_json=$(printf '%s\n' "${gpu_fan[@]}" | jq -cs 'map(tonumber)')
+bus_json=$(printf '"%s"\n' "${gpu_bus[@]}" | jq -cs '.')
 
-echo "Building JSON with: hs=$hs_array temp=$temp_array fan=$fan_array bus=$bus_array" | tee -a "$DEBUG_LOG" 2>/dev/null
+echo "Building JSON with: hs=$hs_json temp=$temp_json fan=$fan_json bus=$bus_json" | tee -a "$DEBUG_LOG" 2>/dev/null
 
+# Build stats using the same pattern as other HiveOS miners
 stats=$(jq -nc \
+    --argjson hs "$hs_json" \
+    --argjson temp "$temp_json" \
+    --argjson fan "$fan_json" \
+    --argjson bus_numbers "$bus_json" \
     --arg hs_units "khs" \
-    --argjson hs "$hs_array" \
-    --argjson temp "$temp_array" \
-    --argjson fan "$fan_array" \
     --arg uptime "$uptime" \
     --arg ver "1.0.0" \
     --arg ac "$blocks_accepted" \
     --arg rj "$blocks_rejected" \
     --arg algo "xenom-pow" \
-    --argjson bus_numbers "$bus_array" \
     '{$hs, $hs_units, $temp, $fan, $uptime, $ver, ar: [$ac, $rj], $algo, $bus_numbers}' 2>&1)
 
 jq_exit=$?
