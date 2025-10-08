@@ -51,6 +51,7 @@ if [[ -f "$LOG_FILE" ]]; then
     
     # Detect number of GPUs from log
     num_gpus=$(grep "GPUs:" "$LOG_FILE" | tail -n 1 | grep -oE '[0-9]+ device' | grep -oE '[0-9]+' || echo 1)
+    echo "Detected $num_gpus GPUs from log" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
     
     # Parse hashrate from miner output
     # Look for "Total hashrate: X.XX MH/s" or "Per-GPU: X.XX MH/s"
@@ -105,9 +106,23 @@ if [[ -f "$LOG_FILE" ]]; then
             fan=$(nvidia-smi -i $i --query-gpu=fan.speed --format=csv,noheader,nounits 2>/dev/null | xargs)
             bus=$(nvidia-smi -i $i --query-gpu=pci.bus_id --format=csv,noheader 2>/dev/null | xargs)
             
+            # Debug each query
+            echo "GPU $i: temp='$temp' fan='$fan' bus='$bus'" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+            
             # Validate and add to arrays
-            [[ "$temp" =~ ^[0-9]+$ ]] && gpu_temp+=("$temp") || gpu_temp+=(0)
-            [[ "$fan" =~ ^[0-9]+$ ]] && gpu_fan+=("$fan") || gpu_fan+=(0)
+            if [[ "$temp" =~ ^[0-9]+$ ]]; then
+                gpu_temp+=("$temp")
+            else
+                gpu_temp+=(0)
+                echo "GPU $i: Invalid temp, using 0" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+            fi
+            
+            if [[ "$fan" =~ ^[0-9]+$ ]]; then
+                gpu_fan+=("$fan")
+            else
+                gpu_fan+=(0)
+                echo "GPU $i: Invalid fan, using 0" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+            fi
             
             # Extract bus number
             if [[ -n "$bus" ]]; then
@@ -119,7 +134,9 @@ if [[ -f "$LOG_FILE" ]]; then
         done
         
         # Debug: log what we got
-        echo "nvidia-smi per-GPU query: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}]" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+        echo "nvidia-smi results: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] count=${#gpu_temp[@]}" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+    else
+        echo "nvidia-smi not found!" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
     fi
     
     # Fill missing GPU stats with zeros if nvidia-smi failed
