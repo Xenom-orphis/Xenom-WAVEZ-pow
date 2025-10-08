@@ -511,7 +511,7 @@ impl GpuMiner {
             eprintln!("   Input (last 16 bytes): {}", hex::encode(&input[input.len().saturating_sub(16)..]));
             eprintln!("   GPU hash: {}", hex::encode(&hash));
             eprintln!("   CPU hash: {}", hex::encode(cpu_hash.as_bytes()));
-            eprintln!("   Hashes match? {}", hash == cpu_hash.as_bytes());
+            eprintln!("   Hashes match? {}", &hash[..] == cpu_hash.as_bytes());
             eprintln!("   Target:   {}", hex::encode(&target_bytes));
             eprintln!("   GPU hash <= target? {}", num_bigint::BigUint::from_bytes_be(&hash) <= *target);
             eprintln!("   CPU hash <= target? {}", cpu_hash_uint <= *target);
