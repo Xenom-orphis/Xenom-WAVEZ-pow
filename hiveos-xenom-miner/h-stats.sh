@@ -186,67 +186,33 @@ fi
 [[ ${#gpu_fan[@]} -eq 0 ]] && gpu_fan=(0)
 [[ ${#gpu_bus[@]} -eq 0 ]] && gpu_bus=(0)
 
-# Build hashrate array (numeric values, no quotes)
-hs_array=""
-for hs in "${gpu_hs[@]}"; do
-    hs_array="${hs_array}${hs},"
-done
-hs_array="[${hs_array%,}]"
+# Build stats JSON using HiveOS standard method
+# Convert arrays to jq format
+hs_array=$(echo ${gpu_hs[@]} | tr " " "\n" | jq -cs '.')
+temp_array=$(echo ${gpu_temp[@]} | tr " " "\n" | jq -cs '.')
+fan_array=$(echo ${gpu_fan[@]} | tr " " "\n" | jq -cs '.')
+bus_array=$(echo ${gpu_bus[@]} | tr " " "\n" | jq -cs '.')
 
-# Build temp array (numeric values, no quotes)
-temp_array=""
-for temp in "${gpu_temp[@]}"; do
-    temp_array="${temp_array}${temp},"
-done
-temp_array="[${temp_array%,}]"
-
-# Build fan array (numeric values, no quotes)
-fan_array=""
-for fan in "${gpu_fan[@]}"; do
-    fan_array="${fan_array}${fan},"
-done
-fan_array="[${fan_array%,}]"
-
-# Build bus array (strings with quotes)
-bus_array=""
-for bus in "${gpu_bus[@]}"; do
-    bus_array="${bus_array}\"${bus}\","
-done
-bus_array="[${bus_array%,}]"
-
-# Build stats JSON
-# HiveOS expects: hs (array), temp (array), fan (array), ar (accepted/rejected as shares)
 echo "Building JSON with: hs=$hs_array temp=$temp_array fan=$fan_array bus=$bus_array" | tee -a "$DEBUG_LOG" 2>/dev/null
 
 stats=$(jq -nc \
+    --arg hs_units "khs" \
     --argjson hs "$hs_array" \
     --argjson temp "$temp_array" \
     --argjson fan "$fan_array" \
-    --argjson bus "$bus_array" \
-    --arg blocks_accepted "$blocks_accepted" \
-    --arg blocks_rejected "$blocks_rejected" \
     --arg uptime "$uptime" \
-    --arg height "$current_height" \
-    '{
-        hs: $hs,
-        hs_units: "khs",
-        temp: $temp,
-        fan: $fan,
-        uptime: ($uptime | tonumber),
-        ver: "1.0.0",
-        ar: [($blocks_accepted | tonumber), ($blocks_rejected | tonumber)],
-        algo: "xenom-pow",
-        bus_numbers: $bus
-    }' 2>&1)
+    --arg ver "1.0.0" \
+    --arg ac "$blocks_accepted" \
+    --arg rj "$blocks_rejected" \
+    --arg algo "xenom-pow" \
+    --argjson bus_numbers "$bus_array" \
+    '{$hs, $hs_units, $temp, $fan, $uptime, $ver, ar: [$ac, $rj], $algo, $bus_numbers}' 2>&1)
 
 jq_exit=$?
 echo "jq exit code: $jq_exit" | tee -a "$DEBUG_LOG" 2>/dev/null
 
 if [[ $jq_exit -ne 0 ]]; then
     echo "jq error: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
-    # Fallback: build simple JSON manually
-    stats='{"hs":'"$hs_array"',"hs_units":"khs","temp":'"$temp_array"',"fan":'"$fan_array"',"uptime":'"$uptime"',"ver":"1.0.0","ar":['"$blocks_accepted"','"$blocks_rejected"'],"algo":"xenom-pow","bus_numbers":'"$bus_array"'}'
-    echo "Using fallback JSON: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
 fi
 
 # Set required variables for HiveOS
