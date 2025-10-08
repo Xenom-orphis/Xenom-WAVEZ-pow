@@ -60,6 +60,27 @@ if [ "$diffTime" -lt "$maxDelay" ]; then
   
   # Parse hashrate from log - look for "Total hashrate: X.XX MH/s"
   total_mhs=$(grep "Total hashrate:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+  
+  # If not found, calculate from GPU brute-force info
+  if [[ -z $total_mhs || $total_mhs == "0" ]]; then
+    # Look for "Starting GPU brute-force: X threads, Y iterations each"
+    threads=$(grep "Starting GPU brute-force:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+ threads' | grep -oE '[0-9]+')
+    iterations=$(grep "Starting GPU brute-force:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+ iterations' | grep -oE '[0-9]+')
+    
+    if [[ -n $threads && -n $iterations && $uptime -gt 0 ]]; then
+      # Calculate total hashes: threads * iterations * gpu_count
+      total_hashes=$(echo "$threads * $iterations * $gpu_count" | bc)
+      # Estimate hashrate based on time (assume each block attempt takes ~30 seconds)
+      # Count mining attempts in last 100 lines
+      attempts=$(grep -c "Mining block" ${CUSTOM_LOG_BASENAME}.log | tail -n 100)
+      if [[ $attempts -gt 0 ]]; then
+        # Rough estimate: total_hashes per attempt / average time per attempt
+        avg_time=30
+        total_mhs=$(echo "scale=2; ($total_hashes / $avg_time) / 1000000" | bc 2>/dev/null || echo 0)
+      fi
+    fi
+  fi
+  
   [[ -z $total_mhs ]] && total_mhs=0
   
   # Get per-GPU hashrate from log
