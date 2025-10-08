@@ -2,11 +2,25 @@
 # This script provides miner statistics in JSON format
 # It's included in the agent script, so agent variables are available
 
-# Get stats from log file
-LOG_FILE="${CUSTOM_LOG_BASENAME}.log"
+# Setup debug logging
+DEBUG_LOG="/tmp/xenom-stats-debug.log"
+STATS_LOG="${CUSTOM_LOG_BASENAME}-stats.log"
 
 # Fallback if CUSTOM_LOG_BASENAME is not set
+if [[ -z "$CUSTOM_LOG_BASENAME" || "$CUSTOM_LOG_BASENAME" == "" ]]; then
+    CUSTOM_LOG_BASENAME="/var/log/miner/custom/hiveos-xenom-miner/xenom"
+    STATS_LOG="/var/log/miner/custom/hiveos-xenom-miner/xenom-stats.log"
+fi
+
+# Get stats from log file
+LOG_FILE="${CUSTOM_LOG_BASENAME}.log"
 [[ -z "$LOG_FILE" || "$LOG_FILE" == ".log" ]] && LOG_FILE="/var/log/miner/custom/hiveos-xenom-miner/xenom.log"
+
+# Log script execution
+echo "=== h-stats.sh executed at $(date) ===" >> "$DEBUG_LOG" 2>&1
+echo "CUSTOM_LOG_BASENAME=$CUSTOM_LOG_BASENAME" >> "$DEBUG_LOG" 2>&1
+echo "LOG_FILE=$LOG_FILE" >> "$DEBUG_LOG" 2>&1
+echo "STATS_LOG=$STATS_LOG" >> "$DEBUG_LOG" 2>&1
 
 # Initialize default values
 total_hs=0
@@ -51,7 +65,7 @@ if [[ -f "$LOG_FILE" ]]; then
     
     # Detect number of GPUs from log
     num_gpus=$(grep "GPUs:" "$LOG_FILE" | tail -n 1 | grep -oE '[0-9]+ device' | grep -oE '[0-9]+' || echo 1)
-    echo "Detected $num_gpus GPUs from log" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+    echo "Detected $num_gpus GPUs from log" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
     
     # Parse hashrate from miner output
     # Look for "Total hashrate: X.XX MH/s" or "Per-GPU: X.XX MH/s"
@@ -107,21 +121,21 @@ if [[ -f "$LOG_FILE" ]]; then
             bus=$(nvidia-smi -i $i --query-gpu=pci.bus_id --format=csv,noheader 2>/dev/null | xargs)
             
             # Debug each query
-            echo "GPU $i: temp='$temp' fan='$fan' bus='$bus'" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+            echo "GPU $i: temp='$temp' fan='$fan' bus='$bus'" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
             
             # Validate and add to arrays
             if [[ "$temp" =~ ^[0-9]+$ ]]; then
                 gpu_temp+=("$temp")
             else
                 gpu_temp+=(0)
-                echo "GPU $i: Invalid temp, using 0" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+                echo "GPU $i: Invalid temp, using 0" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
             fi
             
             if [[ "$fan" =~ ^[0-9]+$ ]]; then
                 gpu_fan+=("$fan")
             else
                 gpu_fan+=(0)
-                echo "GPU $i: Invalid fan, using 0" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+                echo "GPU $i: Invalid fan, using 0" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
             fi
             
             # Extract bus number
@@ -134,9 +148,9 @@ if [[ -f "$LOG_FILE" ]]; then
         done
         
         # Debug: log what we got
-        echo "nvidia-smi results: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] count=${#gpu_temp[@]}" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+        echo "nvidia-smi results: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] count=${#gpu_temp[@]}" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
     else
-        echo "nvidia-smi not found!" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+        echo "nvidia-smi not found!" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
     fi
     
     # Fill missing GPU stats with zeros if nvidia-smi failed
@@ -147,7 +161,7 @@ if [[ -f "$LOG_FILE" ]]; then
     done
     
     # Debug: log parsed GPU stats
-    echo "Parsed GPU stats: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] bus=[${gpu_bus[*]}]" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+    echo "Parsed GPU stats: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] bus=[${gpu_bus[*]}]" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
 else
     # Log file not found - provide minimal stats
     echo "Warning: Log file not found at $LOG_FILE" >&2
@@ -221,9 +235,12 @@ total_khs=$(echo "scale=3; $total_hs / 1000" | bc 2>/dev/null || echo 0)
 khs=$total_khs
 
 # Debug output (will appear in agent logs)
-echo "$(date): Xenom stats: GPUs=$num_gpus, khs=$khs, shares=$blocks_accepted/$blocks_rejected, uptime=${uptime}s" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
-echo "Arrays: hs=$hs_array temp=$temp_array fan=$fan_array" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+echo "$(date): Xenom stats: GPUs=$num_gpus, khs=$khs, shares=$blocks_accepted/$blocks_rejected, uptime=${uptime}s" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+echo "Arrays: hs=$hs_array temp=$temp_array fan=$fan_array" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
 
 # Output for debugging
-echo "stats=$stats" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
-echo "khs=$khs" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+echo "stats=$stats" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+echo "khs=$khs" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+
+# Final summary
+echo "=== Stats script completed ===" >> "$DEBUG_LOG" 2>&1
