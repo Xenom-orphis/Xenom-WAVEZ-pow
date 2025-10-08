@@ -505,9 +505,15 @@ impl GpuMiner {
             let cpu_hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
             
             eprintln!("🔍 Debug verification:");
+            eprintln!("   Nonce: {} (0x{:016x})", nonce, nonce);
+            eprintln!("   Header prefix len: {}", header_prefix.len());
+            eprintln!("   Input (first 32 bytes): {}", hex::encode(&input[..input.len().min(32)]));
+            eprintln!("   Input (last 16 bytes): {}", hex::encode(&input[input.len().saturating_sub(16)..]));
             eprintln!("   GPU hash: {}", hex::encode(&hash));
             eprintln!("   CPU hash: {}", hex::encode(cpu_hash.as_bytes()));
+            eprintln!("   Hashes match? {}", hash == cpu_hash.as_bytes());
             eprintln!("   Target:   {}", hex::encode(&target_bytes));
+            eprintln!("   GPU hash <= target? {}", num_bigint::BigUint::from_bytes_be(&hash) <= *target);
             eprintln!("   CPU hash <= target? {}", cpu_hash_uint <= *target);
             
             // Return nonce as mutation vector (respecting mv_len)
