@@ -33,12 +33,12 @@ if [[ ! -z $CUSTOM_USER_CONFIG ]]; then
     MINER_ADDRESS=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.miner_address // empty' 2>/dev/null)
     [[ -z $MINER_ADDRESS ]] && MINER_ADDRESS=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.address // empty' 2>/dev/null)
     
-    # Parse GPU settings
+    # Parse GPU settings (use true as default for GPU settings)
     THREADS=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.threads // 0' 2>/dev/null)
     MV_LEN=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.mv_len // 16' 2>/dev/null)
-    USE_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.use_gpu // false' 2>/dev/null)
+    USE_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.use_gpu // true' 2>/dev/null)
     GPU_ID=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.gpu_id // 0' 2>/dev/null)
-    MULTI_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.multi_gpu // false' 2>/dev/null)
+    MULTI_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.multi_gpu // true' 2>/dev/null)
     GPU_BATCHES=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.gpu_batches // 40000' 2>/dev/null)
 fi
 
