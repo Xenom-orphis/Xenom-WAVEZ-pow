@@ -1,238 +1,99 @@
 #!/usr/bin/env bash
-# This script provides miner statistics in JSON format
-# It's included in the agent script, so agent variables are available
+. `dirname $BASH_SOURCE`/h-manifest.conf
 
-# Setup debug logging
-DEBUG_LOG="/tmp/xenom-stats-debug.log"
-STATS_LOG="${CUSTOM_LOG_BASENAME}-stats.log"
+get_miner_uptime(){
+  local a=0
+  let a=`stat --format='%Y' ${CUSTOM_LOG_BASENAME}.log`-`stat --format='%Y' ${CUSTOM_CONFIG_FILENAME}`
+  echo $a
+}
 
-# Fallback if CUSTOM_LOG_BASENAME is not set
-if [[ -z "$CUSTOM_LOG_BASENAME" || "$CUSTOM_LOG_BASENAME" == "" ]]; then
-    CUSTOM_LOG_BASENAME="/var/log/miner/custom/hiveos-xenom-miner/xenom"
-    STATS_LOG="/var/log/miner/custom/hiveos-xenom-miner/xenom-stats.log"
-fi
+get_log_time_diff(){
+  local a=0
+  let a=`date +%s`-`stat --format='%Y' ${CUSTOM_LOG_BASENAME}.log`
+  echo $a
+}
 
-# Get stats from log file
-LOG_FILE="${CUSTOM_LOG_BASENAME}.log"
-[[ -z "$LOG_FILE" || "$LOG_FILE" == ".log" ]] && LOG_FILE="/var/log/miner/custom/hiveos-xenom-miner/xenom.log"
+diffTime=$(get_log_time_diff)
+maxDelay=250
 
-# Log script execution
-echo "=== h-stats.sh executed at $(date) ===" >> "$DEBUG_LOG" 2>&1
-echo "CUSTOM_LOG_BASENAME=$CUSTOM_LOG_BASENAME" >> "$DEBUG_LOG" 2>&1
-echo "LOG_FILE=$LOG_FILE" >> "$DEBUG_LOG" 2>&1
-echo "STATS_LOG=$STATS_LOG" >> "$DEBUG_LOG" 2>&1
+if [ "$diffTime" -lt "$maxDelay" ]; then
+  ver="$CUSTOM_VERSION"
+  hs_units="khs"
+  algo="xenom-pow"
 
-# Initialize default values
-total_hs=0
-blocks_found=0
-blocks_accepted=0
-blocks_rejected=0
-uptime=0
-current_height=0
-num_gpus=0
+  uptime=$(get_miner_uptime)
+  [[ $uptime -lt 60 ]] && head -n 50 $CUSTOM_LOG_BASENAME.log > ${CUSTOM_LOG_BASENAME}_head.log
 
-# Arrays for per-GPU stats
-declare -a gpu_hs=()
-declare -a gpu_temp=()
-declare -a gpu_fan=()
-declare -a gpu_bus=()
-
-# Parse the log file for stats
-if [[ -f "$LOG_FILE" ]]; then
-    # Get uptime - use miner start time or first log entry
-    start_line=$(grep "Starting Xenom GPU Miner\|Starting continuous mining loop" "$LOG_FILE" | head -n 1)
-    if [[ -n "$start_line" ]]; then
-        # Try to get process start time from ps
-        miner_pid=$(pgrep -f "xenom-miner-rust" | head -n 1)
-        if [[ -n "$miner_pid" ]]; then
-            uptime=$(ps -o etimes= -p "$miner_pid" 2>/dev/null | tr -d ' ' || echo 0)
-        fi
-    fi
-    
-    # If uptime is still 0, estimate from log file modification time
-    if [[ $uptime -eq 0 ]]; then
-        log_age=$(($(date +%s) - $(stat -f %m "$LOG_FILE" 2>/dev/null || echo $(date +%s))))
-        uptime=$log_age
-    fi
-    
-    # Count blocks found (solutions)
-    blocks_found=$(grep -c "SOLUTION FOUND" "$LOG_FILE" 2>/dev/null | tr -d '\n' || echo 0)
-    blocks_accepted=$(grep -c "BLOCK ACCEPTED" "$LOG_FILE" 2>/dev/null | tr -d '\n' || echo 0)
-    blocks_rejected=$(grep -c "Solution rejected" "$LOG_FILE" 2>/dev/null | tr -d '\n' || echo 0)
-    
-    # Ensure they're valid numbers
-    [[ ! "$blocks_found" =~ ^[0-9]+$ ]] && blocks_found=0
-    [[ ! "$blocks_accepted" =~ ^[0-9]+$ ]] && blocks_accepted=0
-    [[ ! "$blocks_rejected" =~ ^[0-9]+$ ]] && blocks_rejected=0
-    [[ ! "$uptime" =~ ^[0-9]+$ ]] && uptime=0
-    
-    # Get current mining height
-    current_height=$(grep "Mining block" "$LOG_FILE" | tail -n 1 | grep -oE 'block [0-9]+' | grep -oE '[0-9]+' || echo 0)
-    [[ ! "$current_height" =~ ^[0-9]+$ ]] && current_height=0
-    
-    # Detect number of GPUs from log
-    num_gpus=$(grep "GPUs:" "$LOG_FILE" | tail -n 1 | grep -oE '[0-9]+ device' | grep -oE '[0-9]+' || echo 1)
-    echo "Detected $num_gpus GPUs from log" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-    
-    # Parse hashrate from miner output
-    # Look for "Total hashrate: X.XX MH/s" or "Per-GPU: X.XX MH/s"
-    total_hashrate_line=$(grep "Total hashrate:" "$LOG_FILE" | tail -n 1)
-    if [[ -n "$total_hashrate_line" ]]; then
-        # Extract MH/s value and convert to H/s
-        mhs=$(echo "$total_hashrate_line" | grep -oE '[0-9]+\.[0-9]+ MH/s' | grep -oE '[0-9]+\.[0-9]+')
-        if [[ -n "$mhs" ]]; then
-            total_hs=$(echo "scale=0; $mhs * 1000000 / 1" | bc 2>/dev/null || echo 0)
-        fi
-    fi
-    
-    # If no total hashrate, try per-GPU hashrate
-    if [[ $total_hs -eq 0 ]]; then
-        per_gpu_line=$(grep "Per-GPU:" "$LOG_FILE" | tail -n 1)
-        if [[ -n "$per_gpu_line" ]]; then
-            mhs=$(echo "$per_gpu_line" | grep -oE '[0-9]+\.[0-9]+ MH/s' | grep -oE '[0-9]+\.[0-9]+')
-            if [[ -n "$mhs" ]]; then
-                per_gpu_hs=$(echo "scale=0; $mhs * 1000000 / 1" | bc 2>/dev/null || echo 0)
-                total_hs=$((per_gpu_hs * num_gpus))
-            fi
-        fi
-    fi
-    
-    # Fallback: estimate from batch progress logs
-    if [[ $total_hs -eq 0 ]]; then
-        last_batch_line=$(grep "Batch.*hashes" "$LOG_FILE" | tail -n 1)
-        if [[ -n "$last_batch_line" ]]; then
-            total_hashes=$(echo "$last_batch_line" | grep -oE '[0-9]+ hashes' | grep -oE '[0-9]+')
-            if [[ -n "$total_hashes" && $uptime -gt 0 ]]; then
-                total_hs=$(echo "scale=0; $total_hashes / $uptime" | bc 2>/dev/null || echo 0)
-            fi
-        fi
-    fi
-    
-    # Get per-GPU hashrate (divide total by number of GPUs)
-    # Convert to kH/s for HiveOS compatibility
-    if [[ $num_gpus -gt 0 ]]; then
-        hs_per_gpu=$(echo "scale=2; $total_hs / $num_gpus / 1000" | bc 2>/dev/null || echo 0)
-        for ((i=0; i<$num_gpus; i++)); do
-            gpu_hs+=("$hs_per_gpu")
-        done
+  # Get shares from log
+  ac=$(grep -c "BLOCK ACCEPTED" ${CUSTOM_LOG_BASENAME}.log 2>/dev/null || echo 0)
+  rj=$(grep -c "Solution rejected" ${CUSTOM_LOG_BASENAME}.log 2>/dev/null || echo 0)
+  
+  # Get GPU count and stats from HiveOS GPU_STATS_JSON
+  GPU_STATS_JSON=`cat $GPU_STATS_JSON`
+  
+  # Fill arrays from gpu-stats
+  temps=(`echo "$GPU_STATS_JSON" | jq -r ".temp[]"`)
+  fans=(`echo "$GPU_STATS_JSON" | jq -r ".fan[]"`)
+  busids=(`echo "$GPU_STATS_JSON" | jq -r ".busids[]"`)
+  brands=(`echo "$GPU_STATS_JSON" | jq -r ".brand[]"`)
+  
+  gpu_count=${#busids[@]}
+  indexes=()
+  
+  # Filter GPUs by nvidia brand
+  for (( i=0; i < $gpu_count; i++)); do
+    if [[ "${brands[$i]}" == "nvidia" ]]; then
+      indexes+=($i)
+      continue
     else
-        gpu_hs+=("$(echo "scale=2; $total_hs / 1000" | bc 2>/dev/null || echo 0)")
-        num_gpus=1
+      unset temps[$i]
+      unset fans[$i]
+      unset busids[$i]
+      unset brands[$i]
     fi
-    
-    # Get GPU temperatures and fan speeds from nvidia-smi
-    if command -v nvidia-smi &> /dev/null; then
-        # Simple approach: query each GPU individually
-        for ((i=0; i<$num_gpus; i++)); do
-            temp=$(nvidia-smi -i $i --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null | xargs)
-            fan=$(nvidia-smi -i $i --query-gpu=fan.speed --format=csv,noheader,nounits 2>/dev/null | xargs)
-            bus=$(nvidia-smi -i $i --query-gpu=pci.bus_id --format=csv,noheader 2>/dev/null | xargs)
-            
-            # Debug each query
-            echo "GPU $i: temp='$temp' fan='$fan' bus='$bus'" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-            
-            # Validate and add to arrays
-            if [[ "$temp" =~ ^[0-9]+$ ]]; then
-                gpu_temp+=("$temp")
-            else
-                gpu_temp+=(0)
-                echo "GPU $i: Invalid temp, using 0" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-            fi
-            
-            if [[ "$fan" =~ ^[0-9]+$ ]]; then
-                gpu_fan+=("$fan")
-            else
-                gpu_fan+=(0)
-                echo "GPU $i: Invalid fan, using 0" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-            fi
-            
-            # Extract bus number
-            if [[ -n "$bus" ]]; then
-                bus_num=$(echo "$bus" | cut -d':' -f2)
-                gpu_bus+=("$bus_num")
-            else
-                gpu_bus+=("$i")
-            fi
-        done
-        
-        # Debug: log what we got
-        echo "nvidia-smi results: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] count=${#gpu_temp[@]}" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-    else
-        echo "nvidia-smi not found!" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-    fi
-    
-    # Fill missing GPU stats with zeros if nvidia-smi failed
-    while [[ ${#gpu_temp[@]} -lt $num_gpus ]]; do
-        gpu_temp+=(0)
-        gpu_fan+=(0)
-        gpu_bus+=(0)
-    done
-    
-    # Debug: log parsed GPU stats
-    echo "Parsed GPU stats: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] bus=[${gpu_bus[*]}]" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-else
-    # Log file not found - provide minimal stats
-    echo "Warning: Log file not found at $LOG_FILE" >&2
-    num_gpus=1
-    gpu_hs+=(0)
-    gpu_temp+=(0)
-    gpu_fan+=(0)
-    gpu_bus+=(0)
-fi
-
-# Ensure arrays have at least one element
-[[ ${#gpu_hs[@]} -eq 0 ]] && gpu_hs=(0)
-[[ ${#gpu_temp[@]} -eq 0 ]] && gpu_temp=(0)
-[[ ${#gpu_fan[@]} -eq 0 ]] && gpu_fan=(0)
-[[ ${#gpu_bus[@]} -eq 0 ]] && gpu_bus=(0)
-
-# Build stats JSON using HiveOS standard method
-# Convert bash arrays to jq-compatible format
-hs_json=$(printf '%s\n' "${gpu_hs[@]}" | jq -cs 'map(tonumber)')
-temp_json=$(printf '%s\n' "${gpu_temp[@]}" | jq -cs 'map(tonumber)')
-fan_json=$(printf '%s\n' "${gpu_fan[@]}" | jq -cs 'map(tonumber)')
-bus_json=$(printf '"%s"\n' "${gpu_bus[@]}" | jq -cs '.')
-
-echo "Building JSON with: hs=$hs_json temp=$temp_json fan=$fan_json bus=$bus_json" | tee -a "$DEBUG_LOG" 2>/dev/null
-
-# Build stats using the same pattern as other HiveOS miners
-# Note: uptime and ar values must be numbers, not strings
-stats=$(jq -nc \
-    --argjson hs "$hs_json" \
-    --argjson temp "$temp_json" \
-    --argjson fan "$fan_json" \
-    --argjson bus_numbers "$bus_json" \
-    --arg hs_units "khs" \
+  done
+  
+  # Get GPU stats from HiveOS
+  gpu_temp=$(jq '.temp' <<< $GPU_STATS_JSON)
+  gpu_fan=$(jq '.fan' <<< $GPU_STATS_JSON)
+  gpu_bus=$(jq '.busids' <<< $GPU_STATS_JSON)
+  
+  # Parse hashrate from log - look for "Total hashrate: X.XX MH/s"
+  total_mhs=$(grep "Total hashrate:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+  [[ -z $total_mhs ]] && total_mhs=0
+  
+  # Convert MH/s to kH/s
+  khs=$(echo "$total_mhs * 1000" | bc 2>/dev/null || echo 0)
+  
+  # Get per-GPU hashrate from log
+  for (( i=0; i < ${gpu_count}; i++ )); do
+    gpu_mhs=$(grep "Per-GPU:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+    [[ -z $gpu_mhs ]] && gpu_mhs=$(echo "$total_mhs / $gpu_count" | bc -l 2>/dev/null || echo 0)
+    hs[$i]=$(echo "$gpu_mhs * 1000" | bc 2>/dev/null || echo 0)
+    temp[$i]=$(jq .[$i] <<< $gpu_temp)
+    fan[$i]=$(jq .[$i] <<< $gpu_fan)
+    busid=$(jq .[$i] <<< $gpu_bus)
+    bus_numbers[$i]=`echo $busid | cut -d ":" -f1 | cut -c2- | awk -F: '{ printf "%d\n",("0x"$1) }'`
+  done
+  
+  # Build stats JSON
+  stats=$(jq -nc \
+    --argjson hs "`echo ${hs[@]} | tr " " "\n" | jq -cs '.'`" \
+    --argjson temp "`echo ${temp[@]} | tr " " "\n" | jq -cs '.'`" \
+    --argjson fan "`echo ${fan[@]} | tr " " "\n" | jq -cs '.'`" \
+    --arg hs_units "$hs_units" \
     --arg uptime "$uptime" \
-    --arg ver "1.0.0" \
-    --arg ac "$blocks_accepted" \
-    --arg rj "$blocks_rejected" \
-    --arg algo "xenom-pow" \
-    '{$hs, $hs_units, $temp, $fan, uptime: ($uptime | tonumber), $ver, ar: [($ac | tonumber), ($rj | tonumber)], $algo, $bus_numbers}' 2>&1)
+    --arg ver "$ver" \
+    --arg ac "$ac" \
+    --arg rj "$rj" \
+    --arg algo "$algo" \
+    --argjson bus_numbers "`echo ${bus_numbers[@]} | tr " " "\n" | jq -cs '.'`" \
+    '{$hs, $hs_units, $temp, $fan, $uptime, $ver, ar: [$ac, $rj], $algo, $bus_numbers}')
 
-jq_exit=$?
-echo "jq exit code: $jq_exit" | tee -a "$DEBUG_LOG" 2>/dev/null
-
-if [[ $jq_exit -ne 0 ]]; then
-    echo "jq error: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
+else
+  stats=""
+  khs=0
 fi
 
-# Set required variables for HiveOS
-# Total hashrate in khs
-total_khs=$(echo "scale=3; $total_hs / 1000" | bc 2>/dev/null || echo 0)
-khs=$total_khs
-
-# Debug output (will appear in agent logs)
-echo "$(date): Xenom stats: GPUs=$num_gpus, khs=$khs, shares=$blocks_accepted/$blocks_rejected, uptime=${uptime}s" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-echo "JSON arrays: hs=$hs_json temp=$temp_json fan=$fan_json bus=$bus_json" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-
-# Output for debugging
-echo "FINAL stats=$stats" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-echo "FINAL khs=$khs" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-
-# Verify variables are set
-[[ -z "$stats" ]] && echo "ERROR: stats is empty!" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-[[ -z "$khs" ]] && echo "ERROR: khs is empty!" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-
-# Final summary
-echo "=== Stats script completed, stats length: ${#stats} ===" >> "$DEBUG_LOG" 2>&1
+[[ -z $khs ]] && khs=0
+[[ -z $stats ]] && stats="null"
