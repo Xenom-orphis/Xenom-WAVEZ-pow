@@ -37,6 +37,10 @@ impl GpuMiner {
         // 2. Try relative to current directory (for deployed binaries)
         if ptx_content.is_none() {
             let paths = vec![
+                // HiveOS deployment paths (bin/ directory)
+                "./bin/blake3_simple.ptx",
+                "../bin/blake3_simple.ptx",
+                // Standard paths
                 "./blake3_simple.ptx",
                 "./xenom-miner-rust/blake3_simple.ptx", 
                 "./src/blake3_simple.ptx",

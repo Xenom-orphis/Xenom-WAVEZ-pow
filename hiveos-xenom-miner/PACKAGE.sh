@@ -21,21 +21,52 @@ if [ ! -d "$PARENT_DIR/xenom-miner-rust" ]; then
     exit 1
 fi
 
-# Copy the Rust miner source into the package
-echo "📦 Copying Rust miner source..."
-cp -r "$PARENT_DIR/xenom-miner-rust" "$SCRIPT_DIR/"
+# Build the PTX file for CUDA kernels
+echo "🔨 Building CUDA PTX kernels..."
+cd "$PARENT_DIR/xenom-miner-rust"
+if command -v nvcc &> /dev/null; then
+    nvcc --ptx src/blake3_simple.cu -o blake3_simple.ptx -arch=sm_60 --use_fast_math -O3
+    echo "✅ PTX kernels built successfully"
+else
+    echo "⚠️  nvcc not found - skipping PTX build (will need to build on HiveOS)"
+fi
+cd "$PARENT_DIR"
+
+# Build the miner binary with CUDA support
+echo "🔨 Building Xenom miner binary with CUDA..."
+cd "$PARENT_DIR/xenom-miner-rust"
+cargo build --release --features=cuda
+cd "$PARENT_DIR"
+
+# Check if binary was built successfully
+BINARY_PATH="$PARENT_DIR/xenom-miner-rust/target/release/xenom-miner-rust"
+if [ ! -f "$BINARY_PATH" ]; then
+    echo "❌ Error: Failed to build miner binary"
+    exit 1
+fi
+
+# Create bin directory in package and copy binary + PTX
+echo "📦 Copying compiled binary and PTX kernels..."
+mkdir -p "$SCRIPT_DIR/bin"
+cp "$BINARY_PATH" "$SCRIPT_DIR/bin/"
+chmod +x "$SCRIPT_DIR/bin/xenom-miner-rust"
+
+# Copy PTX file if it exists
+if [ -f "$PARENT_DIR/xenom-miner-rust/blake3_simple.ptx" ]; then
+    cp "$PARENT_DIR/xenom-miner-rust/blake3_simple.ptx" "$SCRIPT_DIR/bin/"
+    echo "✅ PTX kernels included"
+fi
 
 # Set execute permissions on shell scripts
 echo "🔧 Setting execute permissions..."
 chmod +x "$SCRIPT_DIR"/*.sh
 
-# Create the archive
+# Create the archive (exclude source, only include bin/)
 echo "📦 Creating archive: $ARCHIVE_NAME"
 cd "$PARENT_DIR"
 tar -zcvf "$ARCHIVE_NAME" \
     --exclude="hiveos-xenom-miner/.git" \
     --exclude="hiveos-xenom-miner/*.tar.gz" \
-    --exclude="hiveos-xenom-miner/xenom-miner-rust" \
     --transform "s/^hiveos-xenom-miner/$PACKAGE_NAME/" \
     hiveos-xenom-miner
 
