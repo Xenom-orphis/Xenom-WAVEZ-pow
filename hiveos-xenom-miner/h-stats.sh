@@ -208,6 +208,8 @@ bus_array="[${bus_array%,}]"
 
 # Build stats JSON
 # HiveOS expects: hs (array), temp (array), fan (array), ar (accepted/rejected as shares)
+echo "Building JSON with: hs=$hs_array temp=$temp_array fan=$fan_array bus=$bus_array" | tee -a "$DEBUG_LOG" 2>/dev/null
+
 stats=$(jq -nc \
     --argjson hs "$hs_array" \
     --argjson temp "$temp_array" \
@@ -227,7 +229,17 @@ stats=$(jq -nc \
         ar: [($blocks_accepted | tonumber), ($blocks_rejected | tonumber)],
         algo: "xenom-pow",
         bus_numbers: $bus
-    }')
+    }' 2>&1)
+
+jq_exit=$?
+echo "jq exit code: $jq_exit" | tee -a "$DEBUG_LOG" 2>/dev/null
+
+if [[ $jq_exit -ne 0 ]]; then
+    echo "jq error: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
+    # Fallback: build simple JSON manually
+    stats='{"hs":'"$hs_array"',"hs_units":"hs","temp":'"$temp_array"',"fan":'"$fan_array"',"uptime":'"$uptime"',"ver":"1.0.0","ar":['"$blocks_accepted"','"$blocks_rejected"'],"algo":"xenom-pow","bus_numbers":'"$bus_array"'}'
+    echo "Using fallback JSON: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
+fi
 
 # Set required variables for HiveOS
 # Total hashrate in khs
