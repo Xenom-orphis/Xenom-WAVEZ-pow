@@ -120,9 +120,10 @@ __device__ void blake3_hash_optimized(const uint8_t *input, uint32_t input_len, 
     }
     
     uint32_t offset = 0;
-    uint64_t chunk_counter = 0;
+    uint32_t block_in_chunk = 0;  // Track which block within the current chunk
     
-    // Process input in 64-byte blocks
+    // Process input in 64-byte blocks within a single chunk (Blake3 chunks are 1024 bytes)
+    // For inputs < 1024 bytes, everything is in one chunk
     while (offset < input_len) {
         uint8_t block[64];
         uint32_t block_len = (input_len - offset < 64) ? (input_len - offset) : 64;
@@ -136,14 +137,14 @@ __device__ void blake3_hash_optimized(const uint8_t *input, uint32_t input_len, 
             block[i] = 0;
         }
         
-        // Determine flags
+        // Determine flags for this block within the chunk
         uint8_t flags = 0;
-        if (chunk_counter == 0) flags |= CHUNK_START;
-        if (offset + block_len >= input_len) flags |= CHUNK_END | ROOT;
+        if (block_in_chunk == 0) flags |= CHUNK_START;  // First block in chunk
+        if (offset + block_len >= input_len) flags |= CHUNK_END | ROOT;  // Last block overall
         
-        // Compress block
+        // Compress block (chunk_counter is always 0 for single-chunk inputs)
         uint32_t out[16];
-        blake3_compress(cv, block, (uint8_t)block_len, chunk_counter, flags, out);
+        blake3_compress(cv, block, (uint8_t)block_len, 0, flags, out);
         
         // Update chaining value with first 8 words
         for (int i = 0; i < 8; i++) {
@@ -151,7 +152,7 @@ __device__ void blake3_hash_optimized(const uint8_t *input, uint32_t input_len, 
         }
         
         offset += block_len;
-        if (offset < input_len) chunk_counter++;
+        block_in_chunk++;
     }
     
     // Extract final hash (little-endian)
