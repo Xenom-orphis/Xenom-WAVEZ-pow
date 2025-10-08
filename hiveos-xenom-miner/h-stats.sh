@@ -62,14 +62,24 @@ if [ "$diffTime" -lt "$maxDelay" ]; then
   total_mhs=$(grep "Total hashrate:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
   [[ -z $total_mhs ]] && total_mhs=0
   
-  # Convert MH/s to kH/s
-  khs=$(echo "$total_mhs * 1000" | bc 2>/dev/null || echo 0)
-  
   # Get per-GPU hashrate from log
+  per_gpu_mhs=$(grep "Per-GPU:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
+  
+  # If no per-GPU hashrate found, divide total by GPU count
+  if [[ -z $per_gpu_mhs || $per_gpu_mhs == "0" ]]; then
+    if [[ $gpu_count -gt 0 && $(echo "$total_mhs > 0" | bc) -eq 1 ]]; then
+      per_gpu_mhs=$(echo "scale=2; $total_mhs / $gpu_count" | bc 2>/dev/null || echo 0)
+    else
+      per_gpu_mhs=0
+    fi
+  fi
+  
+  # Convert MH/s to kH/s for total
+  khs=$(echo "scale=2; $total_mhs * 1000" | bc 2>/dev/null || echo 0)
+  
+  # Build per-GPU arrays
   for (( i=0; i < ${gpu_count}; i++ )); do
-    gpu_mhs=$(grep "Per-GPU:" ${CUSTOM_LOG_BASENAME}.log | tail -n 1 | grep -oE '[0-9]+\.[0-9]+' | head -n 1)
-    [[ -z $gpu_mhs ]] && gpu_mhs=$(echo "$total_mhs / $gpu_count" | bc -l 2>/dev/null || echo 0)
-    hs[$i]=$(echo "$gpu_mhs * 1000" | bc 2>/dev/null || echo 0)
+    hs[$i]=$(echo "scale=2; $per_gpu_mhs * 1000" | bc 2>/dev/null || echo 0)
     temp[$i]=$(jq .[$i] <<< $gpu_temp)
     fan[$i]=$(jq .[$i] <<< $gpu_fan)
     busid=$(jq .[$i] <<< $gpu_bus)
