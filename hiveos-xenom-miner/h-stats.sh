@@ -187,11 +187,11 @@ fi
 [[ ${#gpu_bus[@]} -eq 0 ]] && gpu_bus=(0)
 
 # Build stats JSON using HiveOS standard method
-# Convert arrays to jq format
-hs_array=$(echo ${gpu_hs[@]} | tr " " "\n" | jq -cs '.')
-temp_array=$(echo ${gpu_temp[@]} | tr " " "\n" | jq -cs '.')
-fan_array=$(echo ${gpu_fan[@]} | tr " " "\n" | jq -cs '.')
-bus_array=$(echo ${gpu_bus[@]} | tr " " "\n" | jq -cs '.')
+# Convert arrays to jq format - need to handle numeric values properly
+hs_array=$(printf '%s\n' "${gpu_hs[@]}" | jq -cs 'map(tonumber)')
+temp_array=$(printf '%s\n' "${gpu_temp[@]}" | jq -cs 'map(tonumber)')
+fan_array=$(printf '%s\n' "${gpu_fan[@]}" | jq -cs 'map(tonumber)')
+bus_array=$(printf '%s\n' "${gpu_bus[@]}" | jq -cs '.')
 
 echo "Building JSON with: hs=$hs_array temp=$temp_array fan=$fan_array bus=$bus_array" | tee -a "$DEBUG_LOG" 2>/dev/null
 
