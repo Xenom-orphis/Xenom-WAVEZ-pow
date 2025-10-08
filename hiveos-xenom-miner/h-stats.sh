@@ -196,6 +196,7 @@ bus_json=$(printf '"%s"\n' "${gpu_bus[@]}" | jq -cs '.')
 echo "Building JSON with: hs=$hs_json temp=$temp_json fan=$fan_json bus=$bus_json" | tee -a "$DEBUG_LOG" 2>/dev/null
 
 # Build stats using the same pattern as other HiveOS miners
+# Note: uptime and ar values must be numbers, not strings
 stats=$(jq -nc \
     --argjson hs "$hs_json" \
     --argjson temp "$temp_json" \
@@ -207,7 +208,7 @@ stats=$(jq -nc \
     --arg ac "$blocks_accepted" \
     --arg rj "$blocks_rejected" \
     --arg algo "xenom-pow" \
-    '{$hs, $hs_units, $temp, $fan, $uptime, $ver, ar: [$ac, $rj], $algo, $bus_numbers}' 2>&1)
+    '{$hs, $hs_units, $temp, $fan, uptime: ($uptime | tonumber), $ver, ar: [($ac | tonumber), ($rj | tonumber)], $algo, $bus_numbers}' 2>&1)
 
 jq_exit=$?
 echo "jq exit code: $jq_exit" | tee -a "$DEBUG_LOG" 2>/dev/null
