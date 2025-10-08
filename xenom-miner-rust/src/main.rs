@@ -391,7 +391,8 @@ fn mine_loop(args: &Args) {
                     
                     s.spawn(move || {
                         let res = if args.gpu_brute {
-                            miner.mine_bruteforce_gpu(&header, &target, args.batches)
+                            let max_nonces = args.batches as u64 * 256 * 1024; // batches * threads_per_block * num_blocks
+                            miner.mine_bruteforce_nonce_gpu(&header, &target, 0, max_nonces)
                         } else {
                             miner.mine_with_ga(&header, &target, args.generations, args.mutation_rate)
                         };
