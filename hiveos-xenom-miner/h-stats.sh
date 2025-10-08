@@ -224,11 +224,15 @@ khs=$total_khs
 
 # Debug output (will appear in agent logs)
 echo "$(date): Xenom stats: GPUs=$num_gpus, khs=$khs, shares=$blocks_accepted/$blocks_rejected, uptime=${uptime}s" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-echo "Arrays: hs=$hs_array temp=$temp_array fan=$fan_array" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+echo "JSON arrays: hs=$hs_json temp=$temp_json fan=$fan_json bus=$bus_json" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
 
 # Output for debugging
-echo "stats=$stats" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
-echo "khs=$khs" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+echo "FINAL stats=$stats" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+echo "FINAL khs=$khs" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+
+# Verify variables are set
+[[ -z "$stats" ]] && echo "ERROR: stats is empty!" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
+[[ -z "$khs" ]] && echo "ERROR: khs is empty!" | tee -a "$DEBUG_LOG" "$STATS_LOG" 2>/dev/null
 
 # Final summary
-echo "=== Stats script completed ===" >> "$DEBUG_LOG" 2>&1
+echo "=== Stats script completed, stats length: ${#stats} ===" >> "$DEBUG_LOG" 2>&1
