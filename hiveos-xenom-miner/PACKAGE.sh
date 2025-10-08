@@ -5,7 +5,7 @@ set -e
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
-PACKAGE_NAME="xenom-miner"
+PACKAGE_NAME="hiveos-xenom-miner"
 VERSION="1.0.0"
 ARCHIVE_NAME="${PACKAGE_NAME}-${VERSION}.tar.gz"
 
@@ -75,7 +75,6 @@ tar -zcvf "$ARCHIVE_NAME" \
     --exclude="hiveos-xenom-miner/.git" \
     --exclude="hiveos-xenom-miner/*.tar.gz" \
     --exclude="hiveos-xenom-miner/xenom-miner-rust" \
-    --transform "s/^hiveos-xenom-miner/$PACKAGE_NAME/" \
     hiveos-xenom-miner
 
 # Calculate file size
@@ -90,5 +89,5 @@ echo "📤 Upload this file to your HiveOS rig or host it on a web server."
 echo ""
 echo "Installation command for HiveOS:"
 echo "  tar -xzf $ARCHIVE_NAME -C /hive/miners/custom/"
-echo "  chmod +x /hive/miners/custom/$PACKAGE_NAME/*.sh"
+echo "  chmod +x /hive/miners/custom/hiveos-xenom-miner/*.sh"
 echo ""

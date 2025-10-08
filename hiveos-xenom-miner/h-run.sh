@@ -4,12 +4,12 @@ cd `dirname $0`
 
 # Set defaults if HiveOS variables are not set
 if [[ -z $CUSTOM_CONFIG_FILENAME ]]; then
-    CUSTOM_CONFIG_FILENAME="/hive/miners/custom/xenom-miner/xenom.conf"
+    CUSTOM_CONFIG_FILENAME="/hive/miners/custom/hiveos-xenom-miner/xenom.conf"
     echo "Using default config file: $CUSTOM_CONFIG_FILENAME"
 fi
 
 if [[ -z $CUSTOM_LOG_BASENAME ]]; then
-    CUSTOM_LOG_BASENAME="/var/log/miner/custom/xenom-miner/xenom"
+    CUSTOM_LOG_BASENAME="/var/log/miner/custom/hiveos-xenom-miner/xenom"
     echo "Using default log file: $CUSTOM_LOG_BASENAME"
 fi
 
