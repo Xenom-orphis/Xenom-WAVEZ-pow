@@ -56,12 +56,19 @@ if [[ -f "$LOG_FILE" ]]; then
     fi
     
     # Count blocks found (solutions)
-    blocks_found=$(grep -c "SOLUTION FOUND" "$LOG_FILE" 2>/dev/null || echo 0)
-    blocks_accepted=$(grep -c "BLOCK ACCEPTED" "$LOG_FILE" 2>/dev/null || echo 0)
-    blocks_rejected=$(grep -c "Solution rejected" "$LOG_FILE" 2>/dev/null || echo 0)
+    blocks_found=$(grep -c "SOLUTION FOUND" "$LOG_FILE" 2>/dev/null | tr -d '\n' || echo 0)
+    blocks_accepted=$(grep -c "BLOCK ACCEPTED" "$LOG_FILE" 2>/dev/null | tr -d '\n' || echo 0)
+    blocks_rejected=$(grep -c "Solution rejected" "$LOG_FILE" 2>/dev/null | tr -d '\n' || echo 0)
+    
+    # Ensure they're valid numbers
+    [[ ! "$blocks_found" =~ ^[0-9]+$ ]] && blocks_found=0
+    [[ ! "$blocks_accepted" =~ ^[0-9]+$ ]] && blocks_accepted=0
+    [[ ! "$blocks_rejected" =~ ^[0-9]+$ ]] && blocks_rejected=0
+    [[ ! "$uptime" =~ ^[0-9]+$ ]] && uptime=0
     
     # Get current mining height
     current_height=$(grep "Mining block" "$LOG_FILE" | tail -n 1 | grep -oE 'block [0-9]+' | grep -oE '[0-9]+' || echo 0)
+    [[ ! "$current_height" =~ ^[0-9]+$ ]] && current_height=0
     
     # Detect number of GPUs from log
     num_gpus=$(grep "GPUs:" "$LOG_FILE" | tail -n 1 | grep -oE '[0-9]+ device' | grep -oE '[0-9]+' || echo 1)
