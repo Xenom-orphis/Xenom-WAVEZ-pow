@@ -496,6 +496,20 @@ impl GpuMiner {
             let mut hash = [0u8; 32];
             hash.copy_from_slice(&solution_hash);
             
+            // Debug: verify the solution on CPU
+            let mut input = header_prefix.to_vec();
+            for i in 0..8 {
+                input.push(((nonce >> (i * 8)) & 0xFF) as u8);
+            }
+            let cpu_hash = blake3::hash(&input);
+            let cpu_hash_uint = num_bigint::BigUint::from_bytes_be(cpu_hash.as_bytes());
+            
+            eprintln!("🔍 Debug verification:");
+            eprintln!("   GPU hash: {}", hex::encode(&hash));
+            eprintln!("   CPU hash: {}", hex::encode(cpu_hash.as_bytes()));
+            eprintln!("   Target:   {}", hex::encode(&target_bytes));
+            eprintln!("   CPU hash <= target? {}", cpu_hash_uint <= *target);
+            
             // Return nonce as mutation vector (respecting mv_len)
             let mut nonce_bytes = vec![0u8; self.mv_len];
             // Fill first 8 bytes with nonce (little-endian)
