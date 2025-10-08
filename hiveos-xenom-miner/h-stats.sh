@@ -109,13 +109,14 @@ if [[ -f "$LOG_FILE" ]]; then
     fi
     
     # Get per-GPU hashrate (divide total by number of GPUs)
+    # Convert to kH/s for HiveOS compatibility
     if [[ $num_gpus -gt 0 ]]; then
-        hs_per_gpu=$(echo "scale=0; $total_hs / $num_gpus" | bc 2>/dev/null || echo 0)
+        hs_per_gpu=$(echo "scale=2; $total_hs / $num_gpus / 1000" | bc 2>/dev/null || echo 0)
         for ((i=0; i<$num_gpus; i++)); do
             gpu_hs+=("$hs_per_gpu")
         done
     else
-        gpu_hs+=("$total_hs")
+        gpu_hs+=("$(echo "scale=2; $total_hs / 1000" | bc 2>/dev/null || echo 0)")
         num_gpus=1
     fi
     
@@ -228,7 +229,7 @@ stats=$(jq -nc \
     --arg height "$current_height" \
     '{
         hs: $hs,
-        hs_units: "hs",
+        hs_units: "khs",
         temp: $temp,
         fan: $fan,
         uptime: ($uptime | tonumber),
@@ -244,7 +245,7 @@ echo "jq exit code: $jq_exit" | tee -a "$DEBUG_LOG" 2>/dev/null
 if [[ $jq_exit -ne 0 ]]; then
     echo "jq error: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
     # Fallback: build simple JSON manually
-    stats='{"hs":'"$hs_array"',"hs_units":"hs","temp":'"$temp_array"',"fan":'"$fan_array"',"uptime":'"$uptime"',"ver":"1.0.0","ar":['"$blocks_accepted"','"$blocks_rejected"'],"algo":"xenom-pow","bus_numbers":'"$bus_array"'}'
+    stats='{"hs":'"$hs_array"',"hs_units":"khs","temp":'"$temp_array"',"fan":'"$fan_array"',"uptime":'"$uptime"',"ver":"1.0.0","ar":['"$blocks_accepted"','"$blocks_rejected"'],"algo":"xenom-pow","bus_numbers":'"$bus_array"'}'
     echo "Using fallback JSON: $stats" | tee -a "$DEBUG_LOG" 2>/dev/null
 fi
 
