@@ -22,9 +22,9 @@ fi
 # Default values
 THREADS=0
 MV_LEN=16
-USE_GPU=false
+USE_GPU=true
 GPU_ID=0
-MULTI_GPU=false
+MULTI_GPU=true
 GPU_BATCHES=40000
 
 # User config can override settings (JSON format expected)
