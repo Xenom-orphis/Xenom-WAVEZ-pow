@@ -43,8 +43,8 @@ if [[ -f "$LOG_FILE" ]]; then
     
     # Count blocks found (solutions)
     blocks_found=$(grep -c "SOLUTION FOUND" "$LOG_FILE" 2>/dev/null || echo 0)
-    blocks_accepted=$(grep -c "✅ Solution submitted successfully" "$LOG_FILE" 2>/dev/null || echo 0)
-    blocks_rejected=$(grep -c "❌ Failed to submit solution\|Solution rejected" "$LOG_FILE" 2>/dev/null || echo 0)
+    blocks_accepted=$(grep -c "BLOCK ACCEPTED" "$LOG_FILE" 2>/dev/null || echo 0)
+    blocks_rejected=$(grep -c "Solution rejected" "$LOG_FILE" 2>/dev/null || echo 0)
     
     # Get current mining height
     current_height=$(grep "Mining block" "$LOG_FILE" | tail -n 1 | grep -oE 'block [0-9]+' | grep -oE '[0-9]+' || echo 0)
@@ -52,21 +52,38 @@ if [[ -f "$LOG_FILE" ]]; then
     # Detect number of GPUs from log
     num_gpus=$(grep "GPUs:" "$LOG_FILE" | tail -n 1 | grep -oE '[0-9]+ device' | grep -oE '[0-9]+' || echo 1)
     
-    # Calculate hashrate from batch progress logs
-    # Look for "Batch X/Y, Z hashes" entries to estimate hashrate
-    last_batch_line=$(grep "Batch.*hashes" "$LOG_FILE" | tail -n 1)
-    if [[ -n "$last_batch_line" ]]; then
-        total_hashes=$(echo "$last_batch_line" | grep -oE '[0-9]+ hashes' | grep -oE '[0-9]+')
-        if [[ -n "$total_hashes" && $uptime -gt 0 ]]; then
-            total_hs=$(echo "scale=0; $total_hashes / $uptime" | bc 2>/dev/null || echo 0)
+    # Parse hashrate from miner output
+    # Look for "Total hashrate: X.XX MH/s" or "Per-GPU: X.XX MH/s"
+    total_hashrate_line=$(grep "Total hashrate:" "$LOG_FILE" | tail -n 1)
+    if [[ -n "$total_hashrate_line" ]]; then
+        # Extract MH/s value and convert to H/s
+        mhs=$(echo "$total_hashrate_line" | grep -oE '[0-9]+\.[0-9]+ MH/s' | grep -oE '[0-9]+\.[0-9]+')
+        if [[ -n "$mhs" ]]; then
+            total_hs=$(echo "scale=0; $mhs * 1000000 / 1" | bc 2>/dev/null || echo 0)
         fi
     fi
     
-    # If no batch info, estimate from batches parameter and uptime
-    if [[ $total_hs -eq 0 && $uptime -gt 10 ]]; then
-        # Default: 40000 batches * population (assume 1M per batch)
-        est_hashes=$((uptime * 1000000))
-        total_hs=$(echo "scale=0; $est_hashes / $uptime" | bc 2>/dev/null || echo 1000000)
+    # If no total hashrate, try per-GPU hashrate
+    if [[ $total_hs -eq 0 ]]; then
+        per_gpu_line=$(grep "Per-GPU:" "$LOG_FILE" | tail -n 1)
+        if [[ -n "$per_gpu_line" ]]; then
+            mhs=$(echo "$per_gpu_line" | grep -oE '[0-9]+\.[0-9]+ MH/s' | grep -oE '[0-9]+\.[0-9]+')
+            if [[ -n "$mhs" ]]; then
+                per_gpu_hs=$(echo "scale=0; $mhs * 1000000 / 1" | bc 2>/dev/null || echo 0)
+                total_hs=$((per_gpu_hs * num_gpus))
+            fi
+        fi
+    fi
+    
+    # Fallback: estimate from batch progress logs
+    if [[ $total_hs -eq 0 ]]; then
+        last_batch_line=$(grep "Batch.*hashes" "$LOG_FILE" | tail -n 1)
+        if [[ -n "$last_batch_line" ]]; then
+            total_hashes=$(echo "$last_batch_line" | grep -oE '[0-9]+ hashes' | grep -oE '[0-9]+')
+            if [[ -n "$total_hashes" && $uptime -gt 0 ]]; then
+                total_hs=$(echo "scale=0; $total_hashes / $uptime" | bc 2>/dev/null || echo 0)
+            fi
+        fi
     fi
     
     # Get per-GPU hashrate (divide total by number of GPUs)

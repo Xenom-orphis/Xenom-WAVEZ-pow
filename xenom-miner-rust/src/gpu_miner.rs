@@ -398,9 +398,10 @@ impl GpuMiner {
                 }
             }
             
-            // Progress
+            // Progress with hashrate
             if batch_idx > 0 && batch_idx % 1000 == 0 {
-                eprintln!("  Batch {}/{}, {} hashes", batch_idx, batches, batch_idx * self.population_size);
+                let total_hashes = batch_idx * self.population_size;
+                eprintln!("  Batch {}/{}, {} hashes", batch_idx, batches, total_hashes);
             }
         }
 

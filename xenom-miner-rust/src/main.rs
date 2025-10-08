@@ -372,6 +372,7 @@ fn mine_loop(args: &Args) {
         
         println!("⛏️  Mining block {} on {} GPU(s)...", template.height, gpu_miners.len());
         let start = Instant::now();
+        let block_start = start.clone();
         
         // Mine with all GPUs in parallel using threads
         #[cfg(feature = "cuda")]
@@ -419,8 +420,11 @@ fn mine_loop(args: &Args) {
         
         match result {
             Some((mv, hash, gpu_id)) => {
-                let elapsed = start.elapsed();
+                let elapsed = block_start.elapsed();
+                let total_hashes = (args.batches * args.population) as u64;
+                let hashrate = total_hashes as f64 / elapsed.as_secs_f64();
                 println!("✅ SOLUTION FOUND by GPU {} in {:.2}s!", gpu_id, elapsed.as_secs_f64());
+                println!("   Hashrate: {:.2} MH/s", hashrate / 1_000_000.0);
                 println!("   MV: {}", hex::encode(&mv));
                 println!("   Hash: {}", hex::encode(&hash));
                 
@@ -445,7 +449,12 @@ fn mine_loop(args: &Args) {
                 println!("");
             }
             None => {
-                println!("⏭️  No solution found in {:.2}s, fetching next template...", start.elapsed().as_secs_f64());
+                let elapsed = block_start.elapsed();
+                let total_hashes = (args.batches * args.population * gpu_miners.len()) as u64;
+                let hashrate = total_hashes as f64 / elapsed.as_secs_f64();
+                println!("⏭️  No solution found in {:.2}s", elapsed.as_secs_f64());
+                println!("   Total hashrate: {:.2} MH/s ({} GPUs)", hashrate / 1_000_000.0, gpu_miners.len());
+                println!("   Per-GPU: {:.2} MH/s", hashrate / 1_000_000.0 / gpu_miners.len() as f64);
                 println!("");
             }
         }
