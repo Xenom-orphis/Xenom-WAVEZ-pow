@@ -8,6 +8,7 @@ use std::time::Instant;
 
 mod gpu_miner;
 mod node_client;
+mod stats;
 
 /// Rust で実装された最適化マイナー。並列 GA（CPU）に対応し、GPU/OpenCL 統合用のフックを備える
 #[derive(Parser, Debug)]
@@ -78,6 +79,10 @@ struct Args {
     /// Miner wallet address to receive rewards (Waves address format: 3Mxxx...)
     #[arg(long)]
     miner_address: Option<String>,
+
+    /// API server port for stats endpoint (default: 3333)
+    #[arg(long, default_value_t = 3333)]
+    api_port: u16,
 }
 
 fn hex_to_bytes(s: &str) -> Vec<u8> {
@@ -283,8 +288,6 @@ fn run_ga(
 
 fn mine_loop(args: &Args) {
     use node_client::NodeClient;
-    use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
     
     let mut client = NodeClient::new(args.node_url.clone());
     
@@ -295,7 +298,9 @@ fn mine_loop(args: &Args) {
     }
     
     #[cfg(feature = "cuda")]
-    let gpu_miners: Vec<gpu_miner::GpuMiner> = if args.gpu {
+    let gpu_miners = if args.gpu {
+        use stats::{StatsTracker, start_api_server};
+        use std::sync::Arc;
         // Auto-detect number of GPUs or use single GPU
         let miners = if args.gpu_id == 0 && std::env::var("MULTI_GPU").is_ok() {
             // Try to detect all GPUs
@@ -318,15 +323,23 @@ fn mine_loop(args: &Args) {
             return;
         }
         
+        // Initialize stats tracker
+        let stats_tracker = StatsTracker::new(miners.len());
+        let stats_handle = stats_tracker.get_stats();
+        
+        // Start API server
+        start_api_server(Arc::clone(&stats_handle), args.api_port);
+        
         println!("🔄 Starting continuous mining loop");
         println!("   Node: {}", args.node_url);
         println!("   GPUs: {} device(s)", miners.len());
         println!("   GPU Brute-force: {}", args.gpu_brute);
         println!("   Batches: {}", args.batches);
         println!("   Population per GPU: {}", args.population);
+        println!("   API Port: {}", args.api_port);
         println!("");
         
-        miners
+        (miners, stats_tracker)
     } else {
         println!("❌ --gpu flag required for mining loop");
         return;
@@ -337,6 +350,10 @@ fn mine_loop(args: &Args) {
         eprintln!("❌ CUDA support not compiled");
         return;
     }
+    
+    #[cfg(feature = "cuda")]
+    {
+    let (gpu_miners, stats_tracker) = gpu_miners;
     
     loop {
         // Fetch template from node
@@ -354,6 +371,8 @@ fn mine_loop(args: &Args) {
         println!("   Height: {}", template.height);
         println!("   Difficulty: 0x{}", template.difficulty_bits);
         println!("   Target: {}...", &template.target_hex[..16]);
+        
+        stats_tracker.update_height(template.height);
         
         // Parse header and target
         let header_prefix = hex_to_bytes(&template.header_prefix_hex);
@@ -374,10 +393,12 @@ fn mine_loop(args: &Args) {
         let start = Instant::now();
         let block_start = start.clone();
         
+        stats_tracker.set_mining(true);
+        
         // Mine with all GPUs in parallel using threads
-        #[cfg(feature = "cuda")]
         let result = {
-            use std::sync::Mutex;
+            use std::sync::{Arc, Mutex};
+            use std::sync::atomic::{AtomicBool, Ordering};
             let found = Arc::new(AtomicBool::new(false));
             let solution = Arc::new(Mutex::new(None));
             let header_arc = Arc::new(header_prefix.clone());
@@ -415,8 +436,6 @@ fn mine_loop(args: &Args) {
                 .flatten()
         };
         
-        #[cfg(not(feature = "cuda"))]
-        let result: Option<(Vec<u8>, [u8; 32], usize)> = None;
         
         match result {
             Some((mv, hash, gpu_id)) => {
@@ -428,6 +447,8 @@ fn mine_loop(args: &Args) {
                 println!("   MV: {}", hex::encode(&mv));
                 println!("   Hash: {}", hex::encode(&hash));
                 
+                stats_tracker.update_hashrate(total_hashes, elapsed, Some(gpu_id));
+                
                 // Submit to node
                 println!("📤 Submitting solution...");
                 match client.submit_solution(template.height, &hex::encode(&mv), template.timestamp) {
@@ -438,8 +459,10 @@ fn mine_loop(args: &Args) {
                             if let Some(h) = response.hash {
                                 println!("   Hash: {}...", &h[..64]);
                             }
+                            stats_tracker.increment_accepted();
                         } else {
                             println!("❌ Solution rejected: {}", response.message);
+                            stats_tracker.increment_rejected();
                         }
                     }
                     Err(e) => {
@@ -456,12 +479,20 @@ fn mine_loop(args: &Args) {
                 println!("   Total hashrate: {:.2} MH/s ({} GPUs)", hashrate / 1_000_000.0, gpu_miners.len());
                 println!("   Per-GPU: {:.2} MH/s", hashrate / 1_000_000.0 / gpu_miners.len() as f64);
                 println!("");
+                
+                let per_gpu_hashes = (args.batches * args.population) as u64;
+                for gpu_id in 0..gpu_miners.len() {
+                    stats_tracker.update_hashrate(per_gpu_hashes, elapsed, Some(gpu_id));
+                }
             }
         }
+        
+        stats_tracker.set_mining(false);
         
         // Small delay before next iteration
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
+    } // end cfg(feature = "cuda")
 }
 
 fn main() {

@@ -26,6 +26,7 @@ USE_GPU=true
 GPU_ID=0
 MULTI_GPU=true
 GPU_BATCHES=40000
+API_PORT=3333
 
 # User config can override settings (JSON format expected)
 if [[ ! -z $CUSTOM_USER_CONFIG ]]; then
@@ -40,6 +41,7 @@ if [[ ! -z $CUSTOM_USER_CONFIG ]]; then
     GPU_ID=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.gpu_id // 0' 2>/dev/null)
     MULTI_GPU=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.multi_gpu // true' 2>/dev/null)
     GPU_BATCHES=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.gpu_batches // 40000' 2>/dev/null)
+    API_PORT=$(echo "$CUSTOM_USER_CONFIG" | jq -r '.api_port // 3333' 2>/dev/null)
 fi
 
 # Create config file
@@ -53,6 +55,7 @@ USE_GPU=$USE_GPU
 GPU_ID=$GPU_ID
 MULTI_GPU=$MULTI_GPU
 GPU_BATCHES=$GPU_BATCHES
+API_PORT=$API_PORT
 EOF
 
 echo "Xenom miner config generated:"

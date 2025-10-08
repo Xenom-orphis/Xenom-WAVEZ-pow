@@ -44,6 +44,7 @@ if [ "${USE_GPU}" = "true" ]; then
     echo "Multi-GPU: ${MULTI_GPU:-false}" | tee -a $LOG_FILE
     echo "GPU Batches: ${GPU_BATCHES:-40000}" | tee -a $LOG_FILE
 fi
+echo "API Port: ${API_PORT:-3333}" | tee -a $LOG_FILE
 echo "===========================" | tee -a $LOG_FILE
 
 # Export variables for the mining script
@@ -56,6 +57,7 @@ export USE_GPU
 export GPU_ID
 export MULTI_GPU
 export GPU_BATCHES
+export API_PORT
 
 # Run the mining loop
 exec $MINER_DIR/mine-loop.sh 2>&1 | tee -a $LOG_FILE

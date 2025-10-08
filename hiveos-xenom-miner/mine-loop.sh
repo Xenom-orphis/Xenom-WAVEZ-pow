@@ -9,6 +9,7 @@ USE_GPU="${USE_GPU:-true}"
 GPU_ID="${GPU_ID:-0}"
 MULTI_GPU="${MULTI_GPU:-true}"
 MV_LEN="${MV_LEN:-16}"
+API_PORT="${API_PORT:-3333}"
 
 echo "🚀 Starting Xenom GPU Miner"
 echo "   Node URL: $NODE_URL"
@@ -16,10 +17,11 @@ echo "   Miner Address: ${MINER_ADDRESS:-Node wallet (default)}"
 echo "   GPU Mode: Enabled"
 echo "   Multi-GPU: $MULTI_GPU"
 echo "   MV Length: $MV_LEN"
+echo "   API Port: $API_PORT"
 echo ""
 
 # Build miner command with --mine-loop mode
-MINER_CMD="$MINER_BIN --mine-loop --node-url $NODE_URL --gpu --gpu-brute --mv-len $MV_LEN"
+MINER_CMD="$MINER_BIN --mine-loop --node-url $NODE_URL --gpu --gpu-brute --mv-len $MV_LEN --api-port $API_PORT"
 
 # Add miner address if provided
 if [ ! -z "$MINER_ADDRESS" ]; then
