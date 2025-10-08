@@ -99,15 +99,46 @@ if [[ -f "$LOG_FILE" ]]; then
     
     # Get GPU temperatures and fan speeds from nvidia-smi
     if command -v nvidia-smi &> /dev/null; then
-        gpu_stats=$(nvidia-smi --query-gpu=index,temperature.gpu,fan.speed,pci.bus_id --format=csv,noheader,nounits 2>/dev/null)
-        if [[ -n "$gpu_stats" ]]; then
-            while IFS=', ' read -r idx temp fan bus; do
-                gpu_temp+=("$temp")
+        # Try to get GPU stats - handle different nvidia-smi output formats
+        gpu_stats=$(nvidia-smi --query-gpu=index,temperature.gpu,fan.speed,pci.bus_id --format=csv,noheader,nounits 2>&1)
+        
+        # Debug: log nvidia-smi output
+        echo "nvidia-smi output: $gpu_stats" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
+        
+        # Check if nvidia-smi returned valid data (not an error message)
+        if [[ -n "$gpu_stats" && ! "$gpu_stats" =~ "error" && ! "$gpu_stats" =~ "Error" && ! "$gpu_stats" =~ "N/A" ]]; then
+            # Parse CSV output line by line
+            while IFS=',' read -r idx temp fan bus; do
+                # Trim whitespace
+                idx=$(echo "$idx" | xargs)
+                temp=$(echo "$temp" | xargs)
+                fan=$(echo "$fan" | xargs)
+                bus=$(echo "$bus" | xargs)
+                
+                # Add to arrays
+                gpu_temp+=("${temp:-0}")
                 gpu_fan+=("${fan:-0}")
+                
                 # Extract bus number (e.g., "00000000:01:00.0" -> "01")
-                bus_num=$(echo "$bus" | cut -d':' -f2)
-                gpu_bus+=("$bus_num")
+                if [[ -n "$bus" ]]; then
+                    bus_num=$(echo "$bus" | cut -d':' -f2)
+                    gpu_bus+=("$bus_num")
+                else
+                    gpu_bus+=("$idx")
+                fi
             done <<< "$gpu_stats"
+        else
+            # nvidia-smi failed, try alternative format
+            gpu_count=$(nvidia-smi --list-gpus 2>/dev/null | wc -l)
+            if [[ $gpu_count -gt 0 ]]; then
+                for ((i=0; i<$gpu_count; i++)); do
+                    temp=$(nvidia-smi -i $i --query-gpu=temperature.gpu --format=csv,noheader,nounits 2>/dev/null || echo 0)
+                    fan=$(nvidia-smi -i $i --query-gpu=fan.speed --format=csv,noheader,nounits 2>/dev/null || echo 0)
+                    gpu_temp+=("${temp:-0}")
+                    gpu_fan+=("${fan:-0}")
+                    gpu_bus+=("$i")
+                done
+            fi
         fi
     fi
     
@@ -117,6 +148,9 @@ if [[ -f "$LOG_FILE" ]]; then
         gpu_fan+=(0)
         gpu_bus+=(0)
     done
+    
+    # Debug: log parsed GPU stats
+    echo "Parsed GPU stats: temps=[${gpu_temp[*]}] fans=[${gpu_fan[*]}] bus=[${gpu_bus[*]}]" >> "${CUSTOM_LOG_BASENAME}-stats.log" 2>/dev/null
 else
     # Log file not found - provide minimal stats
     echo "Warning: Log file not found at $LOG_FILE" >&2
