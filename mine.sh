@@ -68,9 +68,17 @@ while true; do
         
         # Submit the mined block
         echo "📤 Submitting solution to node..."
+        
+        # Build submission JSON with optional miner address
+        if [ ! -z "$MINER_ADDRESS" ]; then
+            SUBMIT_JSON="{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MV\", \"timestamp\": $TIMESTAMP, \"miner_address\": \"$MINER_ADDRESS\"}"
+        else
+            SUBMIT_JSON="{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MV\", \"timestamp\": $TIMESTAMP}"
+        fi
+        
         SUBMIT_RESULT=$(curl -s -X POST "$NODE_URL/mining/submit" \
             -H "Content-Type: application/json" \
-            -d "{\"height\": $HEIGHT, \"mutation_vector_hex\": \"$MV\", \"timestamp\": $TIMESTAMP}")
+            -d "$SUBMIT_JSON")
         
         SUCCESS=$(echo "$SUBMIT_RESULT" | jq -r .success)
         MESSAGE=$(echo "$SUBMIT_RESULT" | jq -r .message)

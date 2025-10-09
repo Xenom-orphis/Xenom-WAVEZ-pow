@@ -30,9 +30,10 @@ class PowBlockPersister(
    * Constructs a Waves Block from a PoW consensus.BlockHeader and persists it to the blockchain.
    * 
    * @param height The height at which to insert this block
+   * @param minerAddress Optional miner address to receive rewards (if None, uses node wallet)
    * @return Either validation error or success
    */
-  def persistPowBlock(powHeader: _root_.consensus.BlockHeader, height: Long): Either[ValidationError, String] = {
+  def persistPowBlock(powHeader: _root_.consensus.BlockHeader, height: Long, minerAddress: Option[String] = None): Either[ValidationError, String] = {
     try {
       // Get the parent block for reference
       val parentBlockOpt = if (height > 0) {
@@ -71,10 +72,29 @@ class PowBlockPersister(
           val transactions = Seq.empty
           val txRoot = com.wavesplatform.block.mkTransactionsRoot(6.toByte, transactions)
 
+          // Encode miner address in feature votes if provided
+          // Format: Store address bytes as sequence of shorts (2 bytes each)
+          val featureVotes: Seq[Short] = minerAddress match {
+            case Some(addr) =>
+              com.wavesplatform.account.Address.fromString(addr) match {
+                case Right(address) =>
+                  val addressBytes = address.bytes
+                  // Convert bytes to shorts (pack 2 bytes per short)
+                  addressBytes.grouped(2).map { pair =>
+                    val high = (pair(0) & 0xFF) << 8
+                    val low = if (pair.length > 1) (pair(1) & 0xFF) else 0
+                    (high | low).toShort
+                  }.toSeq
+                case Left(_) => Seq.empty
+              }
+            case None => Seq.empty
+          }
+
           // Create Waves BlockHeader with PoW data embedded
           // CRITICAL: Store PoW validation data in block for consensus
           // - baseTarget: difficulty bits (normally PoS target, repurposed for PoW)
           // - generationSignature: mutation vector (16 bytes + 16 padding)
+          // - featureVotes: miner address (if external miner)
           val wavesHeader = com.wavesplatform.block.BlockHeader(
             version = 6.toByte,  // Version 6 = PoW blocks (uses difficulty for score)
             timestamp = blockTimestamp,  // Current time - ignore PoS delay rules
@@ -82,7 +102,7 @@ class PowBlockPersister(
             baseTarget = baseTarget,  // PoW: difficulty bits (was PoS base target)
             generationSignature = generationSigForPoW,  // PoW: mutation vector (was VRF proof)
             generator = generator.publicKey,
-            featureVotes = Seq.empty,
+            featureVotes = featureVotes,  // PoW: miner address (if external)
             rewardVote = -1L,  // PoW marker: bypasses PoS validation
             transactionsRoot = txRoot,  // Empty transactions root
             stateHash = None,  // State hash not supported yet
@@ -106,8 +126,8 @@ class PowBlockPersister(
           log.info(s"🔨 Constructed PoW block for persistence:")
           log.info(s"   Height: $height")
           log.info(s"   Parent: ${parentReference.toString.take(16)}...")
-          log.info(s"   Generator: ${generator.publicKey.toString.take(16)}...")
-          log.info(s"   Generator Address: ${generator.toAddress}")
+          log.info(s"   Block Signer: ${generator.toAddress}")
+          log.info(s"   Miner Address (rewards): ${minerAddress.getOrElse(generator.toAddress.toString)}")
           log.info(s"   MV: ${powHeader.mutationVector.map("%02x".format(_)).mkString}")
           log.info(s"   Signature: ${signature.toString.take(16)}...")
           

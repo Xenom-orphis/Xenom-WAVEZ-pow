@@ -144,6 +144,24 @@ object BlockDiffer {
       } else
         Right(Portfolio.empty)
 
+    // Helper: Extract miner address from PoW block feature votes
+    def extractMinerAddress(block: Block): Option[Address] = {
+      if (block.header.rewardVote == -1L && block.header.featureVotes.nonEmpty) {
+        // Decode address from feature votes (shorts -> bytes)
+        val addressBytes = block.header.featureVotes.flatMap { short =>
+          val high = ((short >> 8) & 0xFF).toByte
+          val low = (short & 0xFF).toByte
+          Seq(high, low)
+        }.toArray
+        com.wavesplatform.account.Address.fromBytes(addressBytes) match {
+          case Right(address) => Some(address)
+          case Left(_) => None
+        }
+      } else {
+        None
+      }
+    }
+
     val addressRewardsE: Either[String, (Portfolio, Map[Address, Portfolio], Map[Address, Portfolio])] = 
       // PoW blocks (rewardVote == -1): Halving coinbase reward (Bitcoin-style)
       if (block.header.rewardVote == -1L) {
@@ -201,7 +219,9 @@ object BlockDiffer {
         totalFee                                         <- initialFeeFromThisBlock.combine(feeFromPreviousBlock)
         (minerReward, daoPortfolio, xtnBuybackPortfolio) <- addressRewardsE
         totalMinerReward                                 <- minerReward.combine(totalFee)
-        totalMinerPortfolio = Map(block.sender.toAddress -> totalMinerReward)
+        // For PoW blocks, use miner address from feature votes if available, otherwise use block signer
+        minerAddress = extractMinerAddress(block).getOrElse(block.sender.toAddress)
+        totalMinerPortfolio = Map(minerAddress -> totalMinerReward)
         nonMinerRewardPortfolios <- Portfolio.combine(daoPortfolio, xtnBuybackPortfolio)
         totalRewardPortfolios    <- Portfolio.combine(totalMinerPortfolio, nonMinerRewardPortfolios)
         patchesSnapshot = leasePatchesSnapshot(blockchainWithNewBlock)

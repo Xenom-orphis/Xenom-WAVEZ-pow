@@ -11,7 +11,7 @@ import spray.json.DefaultJsonProtocol._
 
 case class BlockHeaderResponse(header_hex: String)
 case class BlockHeaderPrefixResponse(header_prefix_hex: String)
-case class MiningSubmission(height: Long, mutation_vector_hex: String, timestamp: Option[Long] = None)
+case class MiningSubmission(height: Long, mutation_vector_hex: String, timestamp: Option[Long] = None, miner_address: Option[String] = None)
 case class MiningSubmissionResponse(success: Boolean, message: String, hash: Option[String] = None)
 case class MiningTemplateResponse(height: Long, header_prefix_hex: String, difficulty_bits: String, target_hex: String, timestamp: Long, miner_address: String)
 
@@ -89,7 +89,7 @@ class BlockHeaderRoutes(
                     powBlockPersister match {
                       case Some(persister) =>
                         log.info(s"   Attempting to persist block to blockchain...")
-                        persister.persistPowBlock(minedHeader, submission.height) match {
+                        persister.persistPowBlock(minedHeader, submission.height, submission.miner_address) match {
                           case Right(blockId) =>
                             log.info(s"   ✅ Block successfully persisted! Block ID: ${blockId.take(16)}...")
                             MiningSubmissionResponse(
@@ -272,7 +272,7 @@ class BlockHeaderRoutes(
 object BlockHeaderRoutes {
   implicit val blockHeaderResponseFormat: RootJsonFormat[BlockHeaderResponse] = jsonFormat1(BlockHeaderResponse.apply)
   implicit val blockHeaderPrefixResponseFormat: RootJsonFormat[BlockHeaderPrefixResponse] = jsonFormat1(BlockHeaderPrefixResponse.apply)
-  implicit val miningSubmissionFormat: RootJsonFormat[MiningSubmission] = jsonFormat3(MiningSubmission.apply)
+  implicit val miningSubmissionFormat: RootJsonFormat[MiningSubmission] = jsonFormat4(MiningSubmission.apply)
   implicit val miningSubmissionResponseFormat: RootJsonFormat[MiningSubmissionResponse] = jsonFormat3(MiningSubmissionResponse.apply)
   implicit val miningTemplateResponseFormat: RootJsonFormat[MiningTemplateResponse] = jsonFormat6(MiningTemplateResponse.apply)
 }

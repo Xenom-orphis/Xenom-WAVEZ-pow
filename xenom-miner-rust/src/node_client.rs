@@ -16,6 +16,8 @@ pub struct MiningSubmission {
     pub height: u64,
     pub mutation_vector_hex: String,
     pub timestamp: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub miner_address: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -78,6 +80,7 @@ impl NodeClient {
             height,
             mutation_vector_hex: mutation_vector_hex.to_string(),
             timestamp,
+            miner_address: self.miner_address.clone(),
         };
         
         let response = self.client
