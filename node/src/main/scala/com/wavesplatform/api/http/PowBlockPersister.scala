@@ -156,7 +156,7 @@ class PowBlockPersister(
           val halvings = (height - 1) / halvingInterval
           val powReward = if (halvings >= 64) 0L else initialReward >> halvings
           val rewardWaves = powReward.toDouble / com.wavesplatform.settings.Constants.UnitsInWave
-          log.info(f"   💰 Mining Reward: $rewardWaves%.8f WAVES (halving era $halvings, credited by BlockchainUpdater)")
+          log.info(f"   💰 Mining Reward: $rewardWaves%.8f ${com.wavesplatform.settings.Constants.TokenName} (halving era $halvings, credited by BlockchainUpdater)")
 
           // Append to blockchain
           val appendTask = blockAppender(block)

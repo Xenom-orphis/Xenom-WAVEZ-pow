@@ -126,7 +126,7 @@ object InvokeDiffsCommon {
 
           s"Fee in $assetName for $txName (${tx.assetFee._2} in $assetName)" +
             s"$stepsInfo$totalScriptsInvokedInfo$issuesInfo " +
-            s"does not exceed minimal value of $minFee WAVES."
+            s"does not exceed minimal value of $minFee ${com.wavesplatform.settings.Constants.TokenName}."
         }
 
         Either.cond(

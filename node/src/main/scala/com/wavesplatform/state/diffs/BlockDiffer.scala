@@ -165,11 +165,11 @@ object BlockDiffer {
     val addressRewardsE: Either[String, (Portfolio, Map[Address, Portfolio], Map[Address, Portfolio])] = 
       // PoW blocks (rewardVote == -1): Halving coinbase reward (Bitcoin-style)
       if (block.header.rewardVote == -1L) {
-        // Initial reward: 3 WAVES
+        // Initial reward: 3 WAVESW
         // Halving: Every 210,000 blocks (Bitcoin halving interval)
-        // Block 1-210,000: 3 WAVES
-        // Block 210,001-420,000: 1.5 WAVES
-        // Block 420,001-630,000: 0.75 WAVES
+        // Block 1-210,000: 3 WAVESW
+        // Block 210,001-420,000: 1.5 WAVESW
+        // Block 420,001-630,000: 0.75 WAVESW
         // etc.
         val initialReward = 3L * com.wavesplatform.settings.Constants.UnitsInWave
         val halvingInterval = 210000

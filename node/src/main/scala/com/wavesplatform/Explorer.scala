@@ -270,7 +270,7 @@ object Explorer extends ScorexLogging {
         case "AP" =>
           val address = Address.fromString(argument(1, "address")).explicitGet()
           val pf      = portfolio(rdb.db, reader, address)
-          log.info(s"$address : ${pf.balance} WAVES, ${pf.lease}, ${pf.assets.size} assets")
+          log.info(s"$address : ${pf.balance} ${com.wavesplatform.settings.Constants.TokenName}, ${pf.lease}, ${pf.assets.size} assets")
           pf.assets.toSeq.sortBy(_._1.toString) foreach { case (assetId, balance) =>
             log.info(s"$assetId : $balance")
           }
