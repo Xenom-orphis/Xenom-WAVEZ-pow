@@ -4,9 +4,11 @@ import com.wavesplatform.block.Block
 import com.wavesplatform.common.state.ByteStr
 import com.wavesplatform.crypto
 import com.wavesplatform.lang.ValidationError
+import com.wavesplatform.mining.MultiDimensionalMiningConstraint
 import com.wavesplatform.network.{BlockForged, ChannelGroupExt}
 import com.wavesplatform.state.Blockchain
 import com.wavesplatform.transaction.BlockchainUpdater
+import com.wavesplatform.utx.UtxPool
 import com.wavesplatform.utils.ScorexLogging
 import com.wavesplatform.wallet.Wallet
 import io.netty.channel.group.ChannelGroup
@@ -23,7 +25,8 @@ class PowBlockPersister(
     blockAppender: Block => Task[Either[ValidationError, Option[BigInt]]],
     wallet: Wallet,
     allChannels: ChannelGroup,
-    scheduler: Scheduler
+    scheduler: Scheduler,
+    utxPool: UtxPool
 ) extends ScorexLogging {
 
   /**
@@ -67,9 +70,25 @@ class PowBlockPersister(
           
           log.info(s"   Using PoW header timestamp: $blockTimestamp (matches template and solution)")
 
-          // PoW blocks: empty transactions, rewards handled separately
-          // Keep rewardVote = -1 as PoW marker for PoS bypass
-          val transactions = Seq.empty
+          // Pack pending transactions from UTX pool
+          val mdConstraint = MultiDimensionalMiningConstraint.Unlimited
+          val (maybeTransactions, _, _) = utxPool.packUnconfirmed(
+            mdConstraint,
+            None,  // No previous state hash for PoW blocks
+            UtxPool.PackStrategy.Unlimited
+          )
+          val transactions = maybeTransactions.getOrElse(Seq.empty)
+          
+          log.info(s"   Including ${transactions.size} transaction(s) from mempool")
+          if (transactions.nonEmpty) {
+            transactions.take(5).foreach { tx =>
+              log.info(s"     - ${tx.tpe.transactionName} (${tx.id().toString.take(16)}...)")
+            }
+            if (transactions.size > 5) {
+              log.info(s"     ... and ${transactions.size - 5} more")
+            }
+          }
+          
           val txRoot = com.wavesplatform.block.mkTransactionsRoot(6.toByte, transactions)
 
           // Encode miner address in feature votes if provided

@@ -263,7 +263,8 @@ class Application(val actorSystem: ActorSystem, val settings: WavesSettings, con
       )(block, None).map(_.map(_ => None)),
       wallet,
       allChannels,  // For broadcasting PoW blocks to network peers
-      appenderScheduler
+      appenderScheduler,
+      utxStorage  // Pass UTX pool for including pending transactions
     )
 
     val processFork =
